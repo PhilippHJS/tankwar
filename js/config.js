@@ -178,7 +178,7 @@ export function vehicleFor(index, speed = 1) {
 // einem Teil der Lebensleiste zurück.
 export const GHOST = {
   delay: 1, // so lange nach dem letzten Leben, bis der Geist erscheint
-  speed: 3.2, // auf dem Rand, Felder pro Sekunde
+  speed: 6.5, // auf dem Rand, Felder pro Sekunde: einmal herum in gut 10 Sekunden
   charge: 5, // so schnell wächst die Wurfweite beim Halten
   min: 1, // Wurfweite beim kurzen Tippen
   range: 12,

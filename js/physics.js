@@ -465,7 +465,24 @@ export function stepGhost(arena, ghost, code, params, mode) {
     const back = rimPoint(arena, ghost.s - step);
     const da = (ahead.x - here.x) * dx + (ahead.y - here.y) * dy;
     const db = (back.x - here.x) * dx + (back.y - here.y) * dy;
-    if (Math.max(da, db) > step * 0.2) ghost.s = wrapRim(arena, ghost.s + (da >= db ? step : -step));
+    if (Math.max(da, db) > step * 0.2) {
+      const dir = da >= db ? 1 : -1;
+      let next = ghost.s + dir * step;
+      // Über eine Ecke hinaus nur, wenn die Taste auch in die neue Richtung zeigt.
+      // Sonst bleibt der Geist genau in der Ecke stehen.
+      const W = arena.W - 1;
+      const H = arena.H - 1;
+      const L = rimLength(arena);
+      for (const corner of [0, W, W + H, 2 * W + H, L]) {
+        const crossed = dir > 0 ? ghost.s < corner - 1e-9 && next > corner : ghost.s > corner + 1e-9 && next < corner;
+        if (!crossed) continue;
+        const c = rimPoint(arena, corner);
+        const beyond = rimPoint(arena, corner + dir * 0.1);
+        if ((beyond.x - c.x) * dx + (beyond.y - c.y) * dy < 0.03) next = corner;
+        break;
+      }
+      ghost.s = wrapRim(arena, next);
+    }
   }
   if (ghost.cd > 0) ghost.cd -= 1;
   if (mode !== MODE.PLAY) {
