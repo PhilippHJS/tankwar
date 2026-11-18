@@ -113,14 +113,15 @@ export function circleInWall(arena, x, y, r) {
 
 // x, y: Mitte; h: Richtung der Wanne; a: Richtung des Turms; v: Tempo entlang
 // der Wanne (negativ heißt rückwärts); cd: Schritte bis zum nächsten Schuss.
-// Je nach Waffe: ammo Schuss im Magazin; ch Abstand des Zielkreises (0: lädt
-// nicht auf); mana 0 bis 1; zt Schritte bis zum nächsten Blitz; rest
+// Je nach Waffe: ammo Schuss im Magazin; ch Abstand des Zielkreises vom
+// Startpunkt (0: lädt nicht auf); ox, oy, ca: Startpunkt und Richtung, beim
+// Drücken festgehalten; mana 0 bis 1; zt Schritte bis zum nächsten Blitz; rest
 // Schritte ohne Blitzen; lock: Mana war leer, erst loslassen; on: blitzt gerade.
 export function newTank(x, y, h, vehicle = null) {
   const weapon = vehicle ? vehicle.weapon : {};
-  return { x, y, h, a: h, v: 0, cd: 0, ammo: weapon.magazine || 0, ch: 0, mana: 1, zt: 0, rest: 0, lock: 0, on: 0 };
+  return { x, y, h, a: h, v: 0, cd: 0, ammo: weapon.magazine || 0, ch: 0, ox: x, oy: y, ca: h, mana: 1, zt: 0, rest: 0, lock: 0, on: 0 };
 }
-const TANK_KEYS = ['x', 'y', 'h', 'a', 'v', 'cd', 'ammo', 'ch', 'mana', 'zt', 'rest', 'lock', 'on'];
+const TANK_KEYS = ['x', 'y', 'h', 'a', 'v', 'cd', 'ammo', 'ch', 'ox', 'oy', 'ca', 'mana', 'zt', 'rest', 'lock', 'on'];
 export function copyTank(src, dst = {}) {
   for (const key of TANK_KEYS) dst[key] = src[key];
   return dst;
@@ -133,8 +134,9 @@ export const MODE = { AIM: 0, PLAY: 1, CRUISE: 2 };
 // Ein Schritt. `others`: andere Panzer, an denen dieser anstößt.
 // Gibt zurück, ob in diesem Schritt geschossen wurde.
 export function stepTank(arena, tank, code, vehicle, mode, others = []) {
+  // Lädt der Böller auf, ist der Turm festgestellt
   const aim = inputAim(code);
-  if (aim >= 0) tank.a = turnToward(tank.a, aimAngle(aim), vehicle.turret * DT);
+  if (aim >= 0 && !(tank.ch > 0)) tank.a = turnToward(tank.a, aimAngle(aim), vehicle.turret * DT);
 
   // Fahren: Die Wanne dreht sich zur gewünschten Richtung. Liegt die eher hinter
   // dem Panzer, fährt er rückwärts, statt umständlich zu wenden.
@@ -203,14 +205,21 @@ function useWeapon(arena, tank, w, armed, fire) {
       return 0;
     }
     if (fire) {
-      // Aufladen: Der Zielkreis wandert von der Mündung hinaus, höchstens bis
-      // zum Rand der Arena
+      // Aufladen: Beim Drücken werden Startpunkt und Richtung festgehalten.
+      // Von dort wandert der Zielkreis geradeaus hinaus, höchstens bis zum
+      // Rand der Arena. Wohin der Panzer danach fährt, ändert daran nichts.
       if (tank.cd > 0) return 0;
-      const next = tank.ch > 0 ? Math.min(w.range, tank.ch + w.charge * DT) : BARREL;
-      const px = tank.x + Math.cos(tank.a) * next;
-      const py = tank.y + Math.sin(tank.a) * next;
+      if (tank.ch <= 0) {
+        tank.ox = tank.x;
+        tank.oy = tank.y;
+        tank.ca = tank.a;
+        tank.ch = BARREL;
+        return 0;
+      }
+      const next = Math.min(w.range, tank.ch + w.charge * DT);
+      const px = tank.ox + Math.cos(tank.ca) * next;
+      const py = tank.oy + Math.sin(tank.ca) * next;
       if (px >= 1 && px <= arena.W - 1 && py >= 1 && py <= arena.H - 1) tank.ch = next;
-      else if (tank.ch <= 0) tank.ch = BARREL;
       return 0;
     }
     if (tank.ch <= 0) return 0;
@@ -276,10 +285,11 @@ export function rayHitsCircle(sx, sy, dx, dy, len, cx, cy, r) {
   return hit <= len ? hit : Infinity;
 }
 
-// Mitte der Explosion einer Bombe, `dist` Felder vor dem Panzer, im Feld
+// Mitte des Zielkreises einer Bombe: `dist` Felder vom Startpunkt in die
+// festgehaltene Richtung, im Feld
 export function blastPoint(arena, tank, dist) {
-  const x = Math.min(arena.W - 1, Math.max(1, tank.x + Math.cos(tank.a) * dist));
-  const y = Math.min(arena.H - 1, Math.max(1, tank.y + Math.sin(tank.a) * dist));
+  const x = Math.min(arena.W - 1, Math.max(1, tank.ox + Math.cos(tank.ca) * dist));
+  const y = Math.min(arena.H - 1, Math.max(1, tank.oy + Math.sin(tank.ca) * dist));
   return { x, y };
 }
 

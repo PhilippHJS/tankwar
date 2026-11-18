@@ -627,7 +627,7 @@ export function createRenderer(canvas) {
     ctx.strokeStyle = 'rgba(255,255,255,0.35)';
     ctx.lineWidth = Math.max(1, S * 0.03);
     ctx.beginPath();
-    ctx.moveTo(sx(p.x), sy(p.y));
+    ctx.moveTo(sx(p.ox), sy(p.oy));
     ctx.lineTo(cx, cy);
     ctx.stroke();
     ctx.fillStyle = look.color;
@@ -852,6 +852,10 @@ export function createRenderer(canvas) {
     else if (w.kind === 'gun') {
       const ray = gunRay(view.arena, p, w.range);
       points = [{ x: ray.sx, y: ray.sy }, { x: ray.sx + ray.dx * ray.len, y: ray.sy + ray.dy * ray.len }];
+    } else if (w.kind === 'mortar' && !(p.ch > 0)) {
+      // Richtung, in die der Zielkreis beim Drücken wandern wird
+      const end = blastPoint(view.arena, { ox: p.x, oy: p.y, ca: p.a }, w.range);
+      points = [{ x: p.x + Math.cos(p.a) * 0.6, y: p.y + Math.sin(p.a) * 0.6 }, end];
     } else return;
     ctx.save();
     ctx.lineCap = 'round';

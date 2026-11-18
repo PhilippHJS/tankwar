@@ -95,7 +95,7 @@ export function createHost({ levels, autoRestart = false, onChange = () => {} } 
         return [
           p.in ? 1 : 0, r4(t.x), r4(t.y), r4(t.h), r4(t.a), r4(t.v), t.cd,
           p.hp, p.lives, p.dead, p.shield, p.points, p.tp, p.vehicle, p.kills,
-          t.ammo, r4(t.ch), r4(t.mana), t.zt, t.rest, t.lock, t.on,
+          t.ammo, r4(t.ch), r4(t.mana), t.zt, t.rest, t.lock, t.on, r4(t.ox), r4(t.oy), r4(t.ca),
         ];
       }),
       r: sim.rockets.map((r) => [r.id, r.owner, r.seq, r4(r.x), r4(r.y), r4(r.vx), r4(r.vy), r.life, r.b]),

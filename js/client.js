@@ -25,7 +25,7 @@ const LOST_MS = 5000;
 // Felder eines Panzers im Spielstand
 export const P = {
   IN: 0, X: 1, Y: 2, H: 3, A: 4, V: 5, CD: 6, HP: 7, LIVES: 8, DEAD: 9, SHIELD: 10, PTS: 11, TP: 12, VEH: 13, KILLS: 14,
-  AMMO: 15, CH: 16, MANA: 17, ZT: 18, REST: 19, LOCK: 20, ON: 21,
+  AMMO: 15, CH: 16, MANA: 17, ZT: 18, REST: 19, LOCK: 20, ON: 21, OX: 22, OY: 23, CA: 24,
 };
 // Felder einer Rakete
 const R = { ID: 0, OWNER: 1, SEQ: 2, X: 3, Y: 4, VX: 5, VY: 6, LIFE: 7, B: 8 };
@@ -110,6 +110,9 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
     tank.rest = arr[P.REST];
     tank.lock = arr[P.LOCK];
     tank.on = arr[P.ON];
+    tank.ox = arr[P.OX];
+    tank.oy = arr[P.OY];
+    tank.ca = arr[P.CA];
   }
   const isLive = (arr) => arr[P.IN] === 1 && arr[P.LIVES] > 0 && arr[P.DEAD] === 0;
 
@@ -417,7 +420,7 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
     slot: -1, winners: [], champions: [], rockets: [],
     players: Array.from({ length: MAX_PLAYERS }, (_, slot) => ({
       slot, in: false, x: 0, y: 0, h: 0, a: 0, v: 0, hp: 0, maxHp: 100, lives: 0, dead: 0, shield: 0,
-      points: 0, kills: 0, tp: 0, vehicle: 0, reload: 1, ammo: 0, ch: 0, mana: 1, on: 0, name: BOT_NAMES[slot], kind: 'free', online: true, mine: false,
+      points: 0, kills: 0, tp: 0, vehicle: 0, reload: 1, ammo: 0, ch: 0, ox: 0, oy: 0, ca: 0, mana: 1, on: 0, name: BOT_NAMES[slot], kind: 'free', online: true, mine: false,
     })),
   };
   const rocketPool = [];
@@ -467,6 +470,9 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
       out.ch = tank ? tank.ch : arr[P.CH];
       out.mana = tank ? tank.mana : arr[P.MANA];
       out.on = tank ? tank.on : arr[P.ON];
+      out.ox = tank ? tank.ox : arr[P.OX];
+      out.oy = tank ? tank.oy : arr[P.OY];
+      out.ca = tank ? tank.ca : arr[P.CA];
       // Nachladen: 1 heißt bereit
       const w = VEHICLES[out.vehicle].weapon;
       const cdSecs = w.kind === 'gun' ? (out.ammo <= 0 ? w.reload : w.interval) : w.cooldown || 0;

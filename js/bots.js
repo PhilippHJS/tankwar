@@ -234,15 +234,20 @@ export function createBot(slot, seed) {
       const lead = 0.4 + noise * 0.3;
       const lx = foe.tank.x + Math.cos(foe.tank.h) * foe.tank.v * lead;
       const ly = foe.tank.y + Math.sin(foe.tank.h) * foe.tank.v * lead;
-      aimTo = Math.atan2(ly - tank.y, lx - tank.x) + noise * 0.2;
-      const want = Math.hypot(lx - tank.x, ly - tank.y) + noise * 1.6;
       const safe = w.radius + TANK_R + 0.6;
-      const lined = Math.abs(angleDiff(aimTo, tank.a)) < 0.08;
-      if (playing && tank.cd <= 0 && (tank.ch > 0 || t >= calmUntil)) {
-        // halten, bis der Zielkreis weit genug draußen ist, dann loslassen
-        const goal = Math.min(w.range, Math.max(want, safe));
-        fire = tank.ch < goal || !lined || tank.ch < safe;
+      if (tank.ch > 0) {
+        // Richtung steht fest: loslassen, wenn der Kreis auf Höhe des Gegners
+        // ist, aber nie zu nah am eigenen Panzer
+        const along = (lx - tank.ox) * Math.cos(tank.ca) + (ly - tank.oy) * Math.sin(tank.ca) + noise * 1.6;
+        const c = blastPoint(arena, tank, tank.ch);
+        const near = Math.hypot(c.x - tank.x, c.y - tank.y) < safe;
+        fire = tank.ch < Math.min(w.range, along) || near;
         if (!fire) calmUntil = t + 40 + rng.int(80);
+      } else {
+        aimTo = Math.atan2(ly - tank.y, lx - tank.x) + noise * 0.2;
+        const lined = Math.abs(angleDiff(aimTo, tank.a)) < 0.08;
+        const reach = Math.hypot(lx - tank.x, ly - tank.y);
+        fire = playing && tank.cd <= 0 && t >= calmUntil && lined && reach > safe && reach < w.range + 0.5;
       }
       wish = far < 3 ? 'away' : far > 7 ? 'near' : 'keep';
     } else if (w.kind === 'zap') {

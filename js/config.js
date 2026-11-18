@@ -3,7 +3,7 @@
 
 export const TICK_RATE = 60;
 export const DT = 1 / TICK_RATE;
-export const PROTOCOL = 2;
+export const PROTOCOL = 3;
 
 // Plätze im Raum. Alles ist auf eine beliebige Zahl ausgelegt, für mehr
 // Spieler braucht es nur mehr Farben (siehe COLORS) und Arenen mit genug
@@ -25,7 +25,8 @@ export const BARREL = 0.6; // von der Mitte bis zur Mündung
 // Zeiten in Sekunden. `kind` bestimmt, wie die Waffe funktioniert:
 //   rocket  Rakete, prallt an jeder Wand ab
 //   gun     Sofort-Treffer bis zur ersten Wand, Magazin mit Nachladen
-//   mortar  Leertaste halten schiebt den Zielkreis hinaus, loslassen sprengt dort
+//   mortar  Leertaste halten schiebt den Zielkreis geradeaus hinaus, loslassen
+//           sprengt dort; Startpunkt und Richtung gelten ab dem Drücken
 //   zap     Leertaste halten trifft alle Gegner im Umkreis, verbraucht Mana
 // `stats`: Balken in der Auswahl, 1 bis 5.
 const HULL = { health: 100, accel: 8, brake: 14, turn: 3.4, turret: 3.4 };
@@ -67,7 +68,7 @@ export const VEHICLES = [
     ...HULL,
     id: 'boeller',
     name: 'Böller',
-    hint: 'Leertaste halten schiebt den Zielkreis hinaus, loslassen sprengt dort. Geht durch Wände und trifft auch dich.',
+    hint: 'Leertaste halten schiebt den Zielkreis geradeaus hinaus, loslassen sprengt dort. Geht durch Wände und trifft auch dich.',
     speed: 2,
     weapon: {
       kind: 'mortar',

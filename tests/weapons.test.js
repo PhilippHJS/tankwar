@@ -140,3 +140,24 @@ test('Blitze: ist das Mana leer, erst loslassen; aufgeladen wird nur in Pausen',
   step(packInput(0, -1, true), 1);
   assert.equal(me.tank.on, 1);
 });
+
+test('Bombe: Startpunkt und Richtung gelten ab dem Drücken, Fahren und Pfeile ändern nichts', () => {
+  const { sim, step, aimAt, me } = duel('mortar', [3.5, 1.6], [15.5, 1.6]);
+  const w = W('mortar');
+  const aim = aimAt(15.5, 1.6); // nach rechts
+  step(packInput(0, aim, false), 10);
+  step(packInput(0, aim, true), 1); // Start
+  const down = 1 + 4; // Fahrtrichtung nach unten (Index 5 = 90 Grad)
+  const up = aimIndex(-Math.PI / 2);
+  const hold = Math.round((4 / w.charge) * TICK_RATE);
+  step(packInput(down, up, true), hold);
+  assert.ok(Math.abs(me.tank.a) < 0.01, 'Turm bleibt beim Aufladen stehen');
+  assert.ok(me.tank.y > 2.2, `Panzer ist trotzdem gefahren (${me.tank.y.toFixed(2)})`);
+  step(packInput(down, up, false), 1);
+  const blast = sim.events.find((e) => e.kind === EVENT.BLAST);
+  assert.ok(Math.abs(blast.y - 1.6) < 0.01, 'Zielkreis bleibt auf der Linie vom Startpunkt');
+  assert.ok(Math.abs(blast.x - (3.5 + 0.6 + 4)) < 0.15, `Abstand vom Startpunkt: ${blast.x.toFixed(2)}`);
+  // nach dem Loslassen dreht der Turm wieder
+  step(packInput(0, up, false), 30);
+  assert.ok(me.tank.a < -1, 'Turm dreht wieder');
+});
