@@ -52,7 +52,14 @@ function showMusicButton() {
   button.hidden = !music.available() || document.body.dataset.screen === 'game';
 }
 const music = createMusic({ muted: load(localStorage, 'tankwar-music') === 'aus', onChange: () => showMusicButton() });
+let musicLocked = true;
+// Der Browser erlaubt Ton erst nach dem ersten Klick. Ist dieser Klick der auf
+// den Musikknopf, startet er die Musik, statt sie gleich wieder auszuschalten.
+$('#b-music').addEventListener('pointerdown', () => {
+  musicLocked = music.locked();
+}, { capture: true });
 $('#b-music').addEventListener('click', () => {
+  if (musicLocked && !music.muted()) return;
   save(localStorage, 'tankwar-music', music.toggle() ? 'aus' : 'an');
 });
 

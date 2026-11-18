@@ -41,7 +41,7 @@ export function createMusic({ url = 'audio/menu.mp3', volume = 0.45, muted = fal
     gain = ctx.createGain();
     gain.gain.value = 0;
     gain.connect(ctx.destination);
-    fetch(url, { cache: 'force-cache' })
+    fetch(url)
       .then((response) => (response.ok ? response.arrayBuffer() : null))
       .then((data) => (data ? ctx.decodeAudioData(data) : null))
       .then((decoded) => {
@@ -68,6 +68,9 @@ export function createMusic({ url = 'audio/menu.mp3', volume = 0.45, muted = fal
       menu = on;
       update();
     },
+    // Klick auf den Knopf, solange der Browser noch keinen Ton erlaubt: nur
+    // freischalten, nicht gleich stummschalten
+    locked: () => Boolean(ctx) && ctx.state === 'suspended',
     toggle() {
       off = !off;
       update();
