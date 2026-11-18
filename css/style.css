@@ -411,3 +411,13 @@ fieldset:disabled .opt input:checked + span { opacity: 1; }
 #b-music[aria-pressed='false'] { color: var(--muted); }
 #b-music[aria-pressed='false']::before { color: var(--muted); }
 #b-music:hover { background: rgba(30, 34, 44, 0.95); }
+
+#b-sound {
+  position: absolute;
+  right: 14px; bottom: 4px;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: none;
+}
+#b-sound:hover { color: var(--text); }

@@ -8,15 +8,16 @@
 // beim Wiederholen einer MP3 oft hat. Browser erlauben Ton erst nach einem
 // Klick oder Tastendruck, deshalb wartet die Musik darauf.
 
+import { audioContext } from './sound.js';
+
 const FADE = 0.6; // Sekunden zum Ein- und Ausblenden
 
 export function createMusic({ url = 'audio/menu.mp3', volume = 0.45, muted = false, onChange = () => {} } = {}) {
-  const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
-  let ctx = null;
+  const ctx = audioContext();
   let gain = null;
   let buffer = null;
   let source = null;
-  let available = AC ? null : false; // null: noch unklar
+  let available = ctx ? null : false; // null: noch unklar
   let menu = false; // ist gerade ein Menü zu sehen?
   let off = muted;
 
@@ -36,8 +37,7 @@ export function createMusic({ url = 'audio/menu.mp3', volume = 0.45, muted = fal
     gain.gain.linearRampToValueAtTime(on ? volume : 0, now + FADE);
   }
 
-  if (AC) {
-    ctx = new AC();
+  if (ctx) {
     gain = ctx.createGain();
     gain.gain.value = 0;
     gain.connect(ctx.destination);

@@ -70,7 +70,8 @@ Eine statische Seite ohne Server und ohne Build-Schritt, aufgebaut wie Hatz.
 - `js/physics.js`, `js/sim.js`, `js/bots.js`: Bewegung, Regeln und Bots, ohne Browser-Abhängigkeiten
 - `js/host.js`, `js/client.js`: Gastgeber und die Sicht eines Geräts auf das Spiel
 - `js/net.js`: Verbindung zwischen den Geräten und Verschlüsselung
-- `js/render.js`, `js/input.js`, `js/music.js`, `js/app.js`: Darstellung, Steuerung, Menümusik, Oberfläche
+- `js/render.js`, `js/input.js`, `js/app.js`: Darstellung, Steuerung, Oberfläche
+- `js/sound.js`, `js/sfx.js`, `js/music.js`: Ton, Geräusche, Menümusik
 
 ### Warum sich die Steuerung direkt anfühlt
 
@@ -81,6 +82,10 @@ Eigene Schüsse gehen sofort los: Raketen fliegen, die Pistole zieht ihre Spur, 
 ### Verbindung
 
 Wie bei Hatz: Die Geräte finden sich über vier öffentliche, kostenlose MQTT-Vermittler und bauen dann eine direkte Leitung (WebRTC) auf. Klappt das nicht, läuft das Spiel über die Vermittler weiter, nur etwas träger. Dort ist alles verschlüsselt (AES-GCM), Schlüssel und Kanalname entstehen aus dem Raumcode.
+
+## Geräusche
+
+Alle Geräusche entstehen im Browser, ohne Dateien, und sind bewusst sparsam: Schüsse, Treffer, Treffer auf den Schutz, Explosionen, Blitze, verpuffende Raketen, Wiedereinstieg, der Countdown und ein kurzes Signal am Rundenende. Für den eigenen Panzer kommen ein Summen beim Aufladen der Bombe, ein Knistern beim Blitzen und ein leises Klicken dazu, wenn wieder nachgeladen ist. Was weiter weg passiert, ist leiser und kommt etwas mehr von links oder rechts. Unten rechts im Spiel lassen sie sich abschalten, der Browser merkt sich das.
 
 ## Musik
 

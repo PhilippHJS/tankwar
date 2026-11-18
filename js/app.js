@@ -6,6 +6,7 @@ import { createClient } from './client.js';
 import { createRenderer } from './render.js';
 import { createControls } from './input.js';
 import { createMusic } from './music.js';
+import { createSfx } from './sfx.js';
 import { createHostNet, createGuestNet, makeRoomCode, cleanCode, makeId, supported, DEFAULT_RELAYS } from './net.js';
 import { PHASE, EVENT } from './sim.js';
 import { packInput, moveIndex, aimIndex } from './physics.js';
@@ -52,6 +53,20 @@ function showMusicButton() {
   button.hidden = !music.available() || document.body.dataset.screen === 'game';
 }
 const music = createMusic({ muted: load(localStorage, 'tankwar-music') === 'aus', onChange: () => showMusicButton() });
+// Geräusche im Spiel, mit eigenem Schalter unten rechts
+const sfx = createSfx({ muted: load(localStorage, 'tankwar-sfx') === 'aus' });
+function showSoundButton() {
+  const off = sfx.muted();
+  $('#b-sound').textContent = off ? 'Ton: aus' : 'Ton: an';
+  $('#b-sound').setAttribute('aria-pressed', String(!off));
+}
+showSoundButton();
+$('#b-sound').addEventListener('click', (event) => {
+  save(localStorage, 'tankwar-sfx', sfx.toggle() ? 'aus' : 'an');
+  showSoundButton();
+  event.currentTarget.blur(); // sonst würde die Leertaste beim Schießen ihn wieder umschalten
+});
+
 let musicLocked = true;
 // Der Browser erlaubt Ton erst nach dem ersten Klick. Ist dieser Klick der auf
 // den Musikknopf, startet er die Musik, statt sie gleich wieder auszuschalten.
@@ -604,6 +619,7 @@ function updateHud(view, t) {
     const left = Math.ceil(view.ticksLeft / TICK_RATE);
     const num = going ? 'Los!' : left <= 3 ? String(Math.max(left, 1)) : '';
     put('count-num', num, (v) => {
+      if (v) sfx.count(v === 'Los!');
       $('#count-num').textContent = v;
       $('#count-num').classList.toggle('go', v === 'Los!');
     });
@@ -620,6 +636,7 @@ function updateHud(view, t) {
   const result = view.phase === PHASE.RESULT;
   put('result', result, (v) => {
     $('#result').hidden = !v;
+    if (v) sfx.result(view.winners.includes(view.slot), view.champions.length > 0);
   });
   if (result) {
     const winners = view.winners;
@@ -740,11 +757,16 @@ function drawFrame(t) {
   if (ownView) {
     for (const e of session.client.effects.splice(0)) {
       renderer.effect(e, view, t);
-      if (screen === 'game') hudEvent(e, view);
+      if (screen === 'game') {
+        hudEvent(e, view);
+        sfx.effect(e, view);
+      }
     }
+    sfx.frame(view, screen === 'game');
     tickFeed(t);
     renderer.draw(view, t, { tags: true, aim: screen === 'game' });
   } else {
+    sfx.frame(null, false);
     demo.client.frame(t);
     const demoView = demo.client.view(t);
     for (const e of demo.client.effects.splice(0)) renderer.effect(e, demoView, t);
@@ -779,6 +801,7 @@ window.__tankwar = {
   view: () => (session ? session.client.view(now()) : null),
   tools: { packInput, moveIndex, aimIndex },
   music,
+  sfx,
 };
 
 requestAnimationFrame(frame);
