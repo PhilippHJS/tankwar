@@ -6,7 +6,7 @@ import { solidAt } from './arenas.js';
 import { traceRocket, gunRay, blastPoint } from './physics.js';
 import { EVENT, PHASE } from './sim.js';
 import { FX } from './client.js';
-import { COLORS, VEHICLES, TANK_R, BARREL, LIVES } from './config.js';
+import { COLORS, VEHICLES, TANK_R, BARREL, LIVES, GHOST } from './config.js';
 import { makeRng } from './rng.js';
 
 const TAU = Math.PI * 2;
@@ -200,6 +200,10 @@ export function drawTankShape(ctx, look, turret, { tread = 0, recoil = 0, wreck 
 }
 
 const kindOf = (p) => (VEHICLES[p.vehicle] || VEHICLES[0]).weapon.kind;
+function rgba(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
 
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
@@ -465,6 +469,40 @@ export function createRenderer(canvas) {
       });
       return;
     }
+    if (e.kind === EVENT.GBLAST) {
+      const r = (e.item || 110) / 100;
+      spawn({ kind: 'flash', x: e.x, y: e.y, r: r * 1.3, life: 0.16, max: 0.16, color: '#fff0c0' });
+      spawn({ kind: 'ring', x: e.x, y: e.y, r: 0.2, grow: (r - 0.2) / 0.25, life: 0.25, max: 0.25, color: rgba((COLORS[e.by] || COLORS[0]).color, 0.9), width: 0.09 });
+      burst(e.x, e.y, 9, () => {
+        const th = rand() * TAU;
+        const v = 0.6 + rand() * 1.8;
+        return { kind: 'fire', x: e.x, y: e.y, vx: Math.cos(th) * v, vy: Math.sin(th) * v, r: 0.1 + rand() * 0.12, grow: 0.6, life: 0.25 + rand() * 0.2, max: 0.45 };
+      });
+      burst(e.x, e.y, 6, () => {
+        const th = rand() * TAU;
+        return { kind: 'smoke', x: e.x, y: e.y, vx: Math.cos(th) * 0.8, vy: Math.sin(th) * 0.8, r: 0.16, grow: 0.8, life: 0.7, max: 0.7, color: '80,74,68' };
+      });
+      scorches.push({ x: e.x, y: e.y, r: r * 0.7, t, rot: rand() * TAU });
+      if (scorches.length > 40) scorches.shift();
+      const me = view.players[view.slot];
+      if (me && Math.hypot(me.x - e.x, me.y - e.y) < r + 1) shake = Math.max(shake, 0.14);
+      return;
+    }
+    if (e.kind === EVENT.REVIVE) {
+      const look = COLORS[e.of] || COLORS[0];
+      spawn({ kind: 'flash', x: e.x, y: e.y, r: 1.6, life: 0.3, max: 0.3, color: look.light });
+      spawn({ kind: 'ring', x: e.x, y: e.y, r: 0.3, grow: 6, life: 0.5, max: 0.5, color: look.color, width: 0.12 });
+      burst(e.x, e.y, 22, () => {
+        const th = rand() * TAU;
+        const v = 1.5 + rand() * 3;
+        return { kind: 'spark', x: e.x, y: e.y, vx: Math.cos(th) * v, vy: Math.sin(th) * v, life: 0.5, max: 0.5, color: rand() < 0.5 ? look.light : '#ffffff' };
+      });
+      return;
+    }
+    if (e.kind === FX.THROW) {
+      burst(e.x, e.y, 4, () => ({ kind: 'smoke', x: e.x, y: e.y, vx: (rand() - 0.5) * 1, vy: (rand() - 0.5) * 1, r: 0.08, grow: 0.5, life: 0.4, max: 0.4, color: '235,235,245' }));
+      return;
+    }
     if (e.kind === EVENT.POP) {
       spawn({ kind: 'flash', x: e.x, y: e.y, r: 0.25, life: 0.08, max: 0.08, color: '#ffe8b0' });
       burst(e.x, e.y, 5, () => ({ kind: 'smoke', x: e.x, y: e.y, vx: (rand() - 0.5) * 1.4, vy: (rand() - 0.5) * 1.4, r: 0.07, grow: 0.6, life: 0.5, max: 0.5, color: '170,165,155' }));
@@ -693,6 +731,134 @@ export function createRenderer(canvas) {
       ctx.arc(x, y, r, 0, TAU);
       ctx.stroke();
     }
+    ctx.restore();
+  }
+
+  // Geist auf dem Rand: halb durchsichtig, schwebt, schaut nach innen
+  function drawGhost(p, t) {
+    const look = COLORS[p.slot] || COLORS[0];
+    const bob = Math.sin(t / 260 + p.slot * 1.7) * S * 0.05;
+    const x = sx(p.gx);
+    const y = sy(p.gy) + bob;
+    const r = S * 0.34;
+    ctx.save();
+    ctx.translate(x, y);
+    const glow = ctx.createRadialGradient(0, 0, r * 0.3, 0, 0, r * 1.7);
+    glow.addColorStop(0, rgba(look.color, 0.35));
+    glow.addColorStop(1, rgba(look.color, 0));
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 1.7, 0, TAU);
+    ctx.fill();
+    // Körper: Kuppel oben, gewellter Saum unten
+    ctx.beginPath();
+    ctx.arc(0, -r * 0.15, r, Math.PI, 0);
+    ctx.lineTo(r, r * 0.8);
+    const waves = 3;
+    const shift = Math.sin(t / 140) * r * 0.08;
+    for (let i = 0; i < waves; i += 1) {
+      const x0 = r - (i * 2 * r) / waves;
+      const x1 = r - ((i + 1) * 2 * r) / waves;
+      ctx.quadraticCurveTo((x0 + x1) / 2 + shift, r * 0.45, x1, r * 0.8);
+    }
+    ctx.closePath();
+    ctx.fillStyle = rgba(look.light, 0.78);
+    ctx.fill();
+    ctx.lineWidth = Math.max(1.5, S * 0.035);
+    ctx.strokeStyle = rgba(look.deep, 0.85);
+    ctx.stroke();
+    // Augen schauen nach innen
+    for (const side of [-1, 1]) {
+      const ex = side * r * 0.36;
+      const ey = -r * 0.2;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(ex, ey, r * 0.2, r * 0.25, 0, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = look.deep;
+      ctx.beginPath();
+      ctx.arc(ex + p.gnx * r * 0.09, ey + p.gny * r * 0.11, r * 0.1, 0, TAU);
+      ctx.fill();
+    }
+    // eigener Geist: Ring zeigt, wann wieder geworfen werden kann
+    if (p.mine && p.gready < 1) {
+      ctx.strokeStyle = rgba('#ffffff', 0.25);
+      ctx.lineWidth = Math.max(2, S * 0.05);
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 1.35, 0, TAU);
+      ctx.stroke();
+      ctx.strokeStyle = look.color;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 1.35, -Math.PI / 2, -Math.PI / 2 + TAU * p.gready);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Eigener Geist beim Aufladen: wohin die Bombe fliegen wird
+  function drawGhostAim(p) {
+    if (!(p.gch > 0)) return;
+    const look = COLORS[p.slot] || COLORS[0];
+    ctx.save();
+    ctx.setLineDash([Math.max(2, S * 0.08), Math.max(3, S * 0.12)]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+    ctx.lineWidth = Math.max(1, S * 0.03);
+    ctx.beginPath();
+    ctx.moveTo(sx(p.gx), sy(p.gy));
+    ctx.lineTo(sx(p.gtx), sy(p.gty));
+    ctx.stroke();
+    ctx.strokeStyle = look.light;
+    ctx.lineWidth = Math.max(1.5, S * 0.045);
+    ctx.beginPath();
+    ctx.arc(sx(p.gtx), sy(p.gty), GHOST.radius * S, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Geisterbombe: fliegt im Bogen, liegt dann kurz da und blinkt
+  function drawBomb(b, t) {
+    const look = COLORS[b.owner] || COLORS[0];
+    const gx = sx(b.x);
+    const gy = sy(b.y);
+    const lift = b.height * S * 1.1;
+    const size = S * 0.15 * (1 + b.height * 0.35);
+    ctx.save();
+    if (b.landed) {
+      // Warnkreis, der sich füllt
+      ctx.strokeStyle = rgba(look.color, 0.35 + 0.5 * b.fuse);
+      ctx.lineWidth = Math.max(1.5, S * 0.04);
+      ctx.setLineDash([Math.max(3, S * 0.1), Math.max(3, S * 0.1)]);
+      ctx.beginPath();
+      ctx.arc(gx, gy, GHOST.radius * S, 0, TAU);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = rgba(look.color, 0.12 + 0.2 * b.fuse);
+      ctx.beginPath();
+      ctx.arc(gx, gy, GHOST.radius * S * b.fuse, 0, TAU);
+      ctx.fill();
+    }
+    ctx.fillStyle = `rgba(30,20,10,${0.35 - b.height * 0.15})`;
+    ctx.beginPath();
+    ctx.ellipse(gx + S * 0.05, gy + S * 0.07, size * (1 - b.height * 0.3), size * 0.6 * (1 - b.height * 0.3), 0, 0, TAU);
+    ctx.fill();
+    const bx = gx;
+    const by = gy - lift;
+    const body = ctx.createRadialGradient(bx - size * 0.35, by - size * 0.35, size * 0.1, bx, by, size);
+    body.addColorStop(0, '#6b6f78');
+    body.addColorStop(1, '#1c1e23');
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.arc(bx, by, size, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = look.color;
+    ctx.lineWidth = Math.max(1, S * 0.03);
+    ctx.stroke();
+    // Zündschnur glimmt, liegt die Bombe, blinkt sie schneller
+    const blink = b.landed ? Math.floor(t / 70) % 2 === 0 : Math.floor(t / 140) % 2 === 0;
+    ctx.fillStyle = blink ? '#ffe680' : '#ff7a3c';
+    ctx.beginPath();
+    ctx.arc(bx + size * 0.55, by - size * 0.75, Math.max(1.5, size * 0.28), 0, TAU);
+    ctx.fill();
     ctx.restore();
   }
 
@@ -1007,6 +1173,14 @@ export function createRenderer(canvas) {
     for (const key of looks.keys()) if (typeof key === 'string' && !ids.has(key)) looks.delete(key);
     drawParticles(false);
     for (const r of view.rockets) drawRocket(r, t);
+    for (const b of view.bombs || []) drawBomb(b, t);
+    if (shown) {
+      for (const p of view.players) {
+        if (!p.ghost) continue;
+        if (p.mine) drawGhostAim(p);
+        drawGhost(p, t);
+      }
+    }
 
     if (shown) {
       for (const p of view.players) {

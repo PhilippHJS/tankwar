@@ -13,8 +13,10 @@
 
 import { solidAt } from './arenas.js';
 import { makeRng } from './rng.js';
-import { packInput, moveIndex, aimIndex, launchRocket, stepRocket, copyRocket, angleDiff, castRay, inZapReach, blastPoint, IDLE } from './physics.js';
-import { alive, vehicleOf, PHASE, EVENT } from './sim.js';
+import {
+  packInput, moveIndex, aimIndex, launchRocket, stepRocket, copyRocket, angleDiff, castRay, inZapReach, blastPoint, rimPoint, rimLength, IDLE,
+} from './physics.js';
+import { alive, vehicleOf, ghostActive, ghostParams, PHASE, EVENT } from './sim.js';
 import { TANK_R, ROCKET_R, DT } from './config.js';
 
 const NEIGHBORS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
@@ -167,8 +169,55 @@ export function createBot(slot, seed) {
     return best ? [best[0] - tank.x, best[1] - tank.y] : [0, 0];
   }
 
+  // Als Geist: an die Stelle auf dem Rand fahren, von der aus der schwächste
+  // Gegner quer zur Wand zu treffen ist, aufladen und werfen
+  let ghostNoise = 0;
+  function haunt(sim, me) {
+    const arena = sim.arena;
+    const params = ghostParams(sim);
+    const foes = sim.players.filter((p) => p !== me && alive(p));
+    if (!foes.length || sim.phase !== PHASE.PLAY) return IDLE;
+    const foe = foes.reduce((a, b) => (b.hp + (b.shield ? 200 : 0) < a.hp + (a.shield ? 200 : 0) ? b : a));
+    const W = arena.W - 1;
+    const H = arena.H - 1;
+    const lead = params.flight + params.fuse + 0.4;
+    const fx = foe.tank.x + Math.cos(foe.tank.h) * foe.tank.v * lead;
+    const fy = foe.tank.y + Math.sin(foe.tank.h) * foe.tank.v * lead;
+    const clampTo = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+    const L = rimLength(arena);
+    const options = [
+      { s: clampTo(fx - 0.5, 0, W), d: fy - 0.5 },
+      { s: W + clampTo(fy - 0.5, 0, H), d: W + 0.5 - fx },
+      { s: W + H + clampTo(W + 0.5 - fx, 0, W), d: H + 0.5 - fy },
+      { s: 2 * W + H + clampTo(H + 0.5 - fy, 0, H), d: fx - 0.5 },
+    ].filter((o) => o.d >= params.min && o.d <= params.range);
+    if (!options.length) return IDLE;
+    const along = (to) => {
+      let d = to - me.ghost.s;
+      if (d > L / 2) d -= L;
+      if (d < -L / 2) d += L;
+      return d;
+    };
+    const best = options.reduce((a, b) => (Math.abs(along(b.s)) + b.d * 0.4 < Math.abs(along(a.s)) + a.d * 0.4 ? b : a));
+    const gap = along(best.s);
+    let dx = 0;
+    let dy = 0;
+    if (Math.abs(gap) > 0.25) {
+      const here = rimPoint(arena, me.ghost.s);
+      const next = rimPoint(arena, me.ghost.s + Math.sign(gap) * 0.2);
+      dx = next.x - here.x;
+      dy = next.y - here.y;
+    }
+    // aufladen, bis die Wurfweite passt, dann loslassen
+    if (me.ghost.ch === 0) ghostNoise = (rng() - 0.5) * 1.4;
+    const want = best.d + ghostNoise;
+    const fire = me.ghost.cd <= 0 && Math.abs(gap) < 0.6 && (me.ghost.ch === 0 ? Math.abs(gap) < 0.3 : me.ghost.ch < want);
+    return packInput(moveIndex(dx, dy), -1, fire);
+  }
+
   function think(sim) {
     const me = sim.players[slot];
+    if (me && ghostActive(sim, me)) return haunt(sim, me);
     if (!me || !alive(me)) return IDLE;
     const t = sim.tick;
     const tank = me.tank;

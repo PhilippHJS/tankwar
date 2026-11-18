@@ -185,3 +185,29 @@ test('reißt die Verbindung ab, vertritt ein Bot und der Spieler kommt zurück a
   assert.equal(w.host.slots[slot].online, true);
   assert.ok(a.slot >= 0);
 });
+
+test('als Geist fährt man ohne Verzögerung, und das Gezeigte stimmt mit dem Gastgeber überein', async () => {
+  const { rimPoint } = await import('../js/physics.js');
+  const w = createWorld({ latency: 50, jitter: 20, loss: 0.05, levels: [0, 2, 0] });
+  const a = w.join('a');
+  w.join('b');
+  w.join('c');
+  w.run(1500);
+  w.host.start();
+  w.run(5000);
+  const p = w.host.sim.players[a.slot];
+  p.lives = 0;
+  p.hp = 0;
+  p.outAt = w.host.sim.tick;
+  w.run(1500);
+  assert.equal(a.view(w.now()).players[a.slot].ghost, true, 'sieht sich als Geist');
+  const before = p.ghost.s;
+  a.pilot = () => packInput(1, -1, false); // nach rechts
+  w.run(1500);
+  a.pilot = () => IDLE;
+  w.run(1000);
+  assert.notEqual(p.ghost.s, before, 'beim Gastgeber gefahren');
+  const truth = rimPoint(w.host.sim.arena, p.ghost.s);
+  const shown = a.view(w.now()).players[a.slot];
+  assert.ok(Math.hypot(shown.gx - truth.x, shown.gy - truth.y) < 0.01, `zeigt ${shown.gx.toFixed(2)},${shown.gy.toFixed(2)} statt ${truth.x.toFixed(2)},${truth.y.toFixed(2)}`);
+});

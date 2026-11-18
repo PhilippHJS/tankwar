@@ -523,6 +523,11 @@ function tickFeed(t) {
 
 let lastKiller = -1;
 function hudEvent(e, view) {
+  if (e.kind === EVENT.REVIVE) {
+    const p = view.players[e.of];
+    if (p) addFeed(e.of === view.slot ? 'Du bist als Geist zurück!' : `${colored(p.slot, p.name, false)} ist als Geist zurück!`);
+    return;
+  }
   if (e.kind !== EVENT.DESTROY) return;
   const by = view.players[e.by];
   const of = view.players[e.of];
@@ -552,7 +557,7 @@ function updateHud(view, t) {
     const frac = p.maxHp ? p.hp / p.maxHp : 0;
     const cls = frac > 0.6 ? '' : frac > 0.3 ? 'mid' : 'low';
     const lives = Array.from({ length: LIVES }, (_, i) => `<i class="${i < p.lives ? '' : 'gone'}"></i>`).join('');
-    const tag = p.mine ? 'du' : p.kind === 'free' ? 'Bot' : p.online ? '' : 'getrennt';
+    const tag = p.ghost ? 'Geist' : p.mine ? 'du' : p.kind === 'free' ? 'Bot' : p.online ? '' : 'getrennt';
     return `<div class="pcard${p.mine ? ' me' : ''}${p.lives <= 0 ? ' out' : ''}" style="--c:${COLORS[p.slot].color}">${tankSvg(p.slot, { faded: p.lives <= 0, vehicle: p.vehicle })}`
       + `<div class="top"><span class="who">${esc(p.name)}</span>${tag ? `<span class="tag">${tag}</span>` : ''}<span class="lives">${lives}</span></div>`
       + `<div class="bottom"><span class="hp"><b class="${cls}" style="width:${Math.round(frac * 100)}%"></b></span><span class="pips">${pips(p.points, target)}</span></div></div>`;
@@ -603,7 +608,8 @@ function updateHud(view, t) {
   let down = '';
   if (view.phase === PHASE.PLAY || view.phase === PHASE.COUNTDOWN) {
     if (!me || !me.in) down = 'Du schaust zu und steigst in der nächsten Runde ein.';
-    else if (me.lives <= 0) down = 'Alle Leben verloren.<small>Schau zu, wer die Runde holt.</small>';
+    else if (me.ghost) down = 'Du bist ein Geist. Fahr am Rand entlang, halte die Leertaste und lass los, um eine Bombe zu werfen.<small>Gibst du damit einem Gegner den Rest, kehrst du mit einem Leben zurück.</small>';
+    else if (me.lives <= 0) down = 'Alle Leben verloren.';
     else if (me.dead > 0) {
       const killer = view.players[lastKiller];
       const by = killer && lastKiller !== view.slot ? ` von ${colored(killer.slot, killer.name, false)}` : '';

@@ -379,3 +379,113 @@ export function traceRocket(arena, tank, weapon, bounces = 1, tail = 1.4) {
   points.push({ x: r.x, y: r.y });
   return points;
 }
+
+// ---------- Geister auf dem Rand ----------
+//
+// Der Rand ist der Ring der äußeren Wandfelder. Ein Geist steht an einer
+// Stelle `s` auf diesem Ring (0 links oben, dann im Uhrzeigersinn) und wirft
+// nach innen, quer zur Wand, an den Ecken schräg.
+
+export const rimLength = (arena) => 2 * (arena.W - 1) + 2 * (arena.H - 1);
+const wrapRim = (arena, s) => {
+  const L = rimLength(arena);
+  return ((s % L) + L) % L;
+};
+
+export function rimPoint(arena, s) {
+  const W = arena.W - 1;
+  const H = arena.H - 1;
+  const t = wrapRim(arena, s);
+  let x;
+  let y;
+  if (t < W) {
+    x = 0.5 + t;
+    y = 0.5;
+  } else if (t < W + H) {
+    x = W + 0.5;
+    y = 0.5 + (t - W);
+  } else if (t < 2 * W + H) {
+    x = W + 0.5 - (t - W - H);
+    y = H + 0.5;
+  } else {
+    x = 0.5;
+    y = H + 0.5 - (t - 2 * W - H);
+  }
+  let nx = 0;
+  let ny = 0;
+  if (y <= 0.5 + 1e-6) ny = 1;
+  if (y >= H + 0.5 - 1e-6) ny = -1;
+  if (x <= 0.5 + 1e-6) nx = 1;
+  if (x >= W + 0.5 - 1e-6) nx = -1;
+  const len = Math.hypot(nx, ny) || 1;
+  return { x, y, nx: nx / len, ny: ny / len };
+}
+
+// Die Stelle auf dem Rand, die einem Punkt am nächsten ist
+export function rimNearest(arena, x, y) {
+  const W = arena.W - 1;
+  const H = arena.H - 1;
+  const cx = Math.min(W + 0.5, Math.max(0.5, x));
+  const cy = Math.min(H + 0.5, Math.max(0.5, y));
+  const options = [
+    { d: cy - 0.5, s: cx - 0.5 },
+    { d: W + 0.5 - cx, s: W + (cy - 0.5) },
+    { d: H + 0.5 - cy, s: W + H + (W + 0.5 - cx) },
+    { d: cx - 0.5, s: 2 * W + H + (H + 0.5 - cy) },
+  ];
+  options.sort((a, b) => a.d - b.d);
+  return wrapRim(arena, options[0].s);
+}
+
+// s: Stelle auf dem Rand; cd: Schritte bis zum nächsten Wurf; ch: Wurfweite beim Halten
+export const newGhost = (s = 0) => ({ s, cd: 0, ch: 0 });
+export const copyGhost = (src, dst = {}) => Object.assign(dst, { s: src.s, cd: src.cd, ch: src.ch });
+
+// Wohin die Bombe fliegt: von der Stelle auf dem Rand nach innen, im Feld
+export function ghostTarget(arena, ghost, dist) {
+  const p = rimPoint(arena, ghost.s);
+  return {
+    x: Math.min(arena.W - 1, Math.max(1, p.x + p.nx * dist)),
+    y: Math.min(arena.H - 1, Math.max(1, p.y + p.ny * dist)),
+  };
+}
+
+// Ein Schritt eines Geistes. Gibt die Wurfweite zurück, wenn geworfen wird, sonst 0.
+export function stepGhost(arena, ghost, code, params, mode) {
+  const move = mode === MODE.AIM ? 0 : inputMove(code);
+  if (move) {
+    // In die Richtung auf dem Ring, die am besten zur Taste passt. Das löst
+    // auch die Ecken: Unten gedrückt wird an der Ecke rechts oben abgebogen.
+    const want = moveAngle(move);
+    const dx = Math.cos(want);
+    const dy = Math.sin(want);
+    const step = params.speed * DT;
+    const here = rimPoint(arena, ghost.s);
+    const ahead = rimPoint(arena, ghost.s + step);
+    const back = rimPoint(arena, ghost.s - step);
+    const da = (ahead.x - here.x) * dx + (ahead.y - here.y) * dy;
+    const db = (back.x - here.x) * dx + (back.y - here.y) * dy;
+    if (Math.max(da, db) > step * 0.2) ghost.s = wrapRim(arena, ghost.s + (da >= db ? step : -step));
+  }
+  if (ghost.cd > 0) ghost.cd -= 1;
+  if (mode !== MODE.PLAY) {
+    ghost.ch = 0;
+    return 0;
+  }
+  if (inputFire(code)) {
+    if (ghost.cd <= 0) ghost.ch = ghost.ch > 0 ? Math.min(params.range, ghost.ch + params.charge * DT) : params.min;
+    return 0;
+  }
+  if (ghost.ch <= 0) return 0;
+  const dist = ghost.ch;
+  ghost.ch = 0;
+  ghost.cd = Math.round(params.cooldown * TICK_RATE);
+  return dist;
+}
+
+// Schaden einer Geisterbombe in `d` Feldern Abstand zur Mitte, 0 außerhalb
+export function ghostDamage(params, d) {
+  const reach = Math.max(0, d - TANK_R * 0.5);
+  if (reach > params.radius) return 0;
+  return Math.round(params.edge + (params.damage - params.edge) * (1 - reach / params.radius));
+}

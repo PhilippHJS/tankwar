@@ -11,7 +11,7 @@
 import { audioContext } from './sound.js';
 import { EVENT } from './sim.js';
 import { FX } from './client.js';
-import { VEHICLES } from './config.js';
+import { VEHICLES, GHOST } from './config.js';
 
 const VOLUME = 0.7;
 
@@ -132,6 +132,17 @@ export function createSfx({ muted = false } = {}) {
     puff(k, pan) {
       hiss({ dur: 0.16, vol: 0.07 * k, f: 700, to: 200, pan });
     },
+    pop(k, pan) {
+      hiss({ dur: 0.45, vol: 0.32 * k, f: 1300, to: 160, pan });
+      tone({ f: 150, to: 55, dur: 0.3, vol: 0.32 * k, pan });
+    },
+    whoosh() {
+      tone({ type: 'triangle', f: 260, to: 620, dur: 0.18, vol: 0.06 });
+      hiss({ dur: 0.16, vol: 0.05, filter: 'bandpass', f: 900, to: 2200, q: 1.5 });
+    },
+    rise(k) {
+      [392, 523, 659, 784].forEach((f, i) => tone({ type: 'triangle', f, dur: 0.18, vol: 0.08 * k, delay: i * 0.07 }));
+    },
     chime(k, pan) {
       tone({ type: 'triangle', f: 520, to: 1040, dur: 0.3, vol: 0.08 * k, attack: 0.03, pan });
     },
@@ -169,6 +180,15 @@ export function createSfx({ muted = false } = {}) {
         break;
       case EVENT.ZAP:
         if (once('zap', 0.07)) sounds.crackle(e.of === view.slot || mine ? 1 : near, pan);
+        break;
+      case EVENT.GBLAST:
+        if (once('gblast', 0.05)) sounds.pop(near, pan);
+        break;
+      case EVENT.REVIVE:
+        sounds.rise(e.of === view.slot ? 1.3 : 0.7);
+        break;
+      case FX.THROW:
+        sounds.whoosh();
         break;
       case EVENT.POP:
         if (once('pop', 0.12)) sounds.puff(near, pan);
@@ -240,10 +260,12 @@ export function createSfx({ muted = false } = {}) {
     const me = view && view.slot >= 0 ? view.players[view.slot] : null;
     const live = playing && ready() && me && me.in && me.lives > 0 && me.dead === 0;
     const w = me ? (VEHICLES[me.vehicle] || VEHICLES[0]).weapon : null;
-    // Bombe
-    if (live && w.kind === 'mortar' && me.ch > 0) {
+    // Bombe, auch die des Geistes
+    const ghostCharge = playing && ready() && me && me.ghost && me.gch > 0;
+    if ((live && w.kind === 'mortar' && me.ch > 0) || ghostCharge) {
       if (!hum) hum = startHum();
-      hum.o.frequency.setTargetAtTime(180 + 520 * Math.min(1, me.ch / w.range), ctx.currentTime, 0.03);
+      const f = ghostCharge ? me.gch / GHOST.range : me.ch / w.range;
+      hum.o.frequency.setTargetAtTime(180 + 520 * Math.min(1, f), ctx.currentTime, 0.03);
     } else hum = stop(hum);
     // Blitze
     if (live && w.kind === 'zap' && me.on) {

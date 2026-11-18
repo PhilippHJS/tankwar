@@ -26,6 +26,7 @@ Das Gerät des Gastgebers führt den Spielstand. Seine Seite muss offen bleiben,
 - Wer abgeschossen wird, ist 5 Sekunden raus und steigt dann am Startplatz wieder ein, der am weitesten von den anderen weg ist. Danach ist er 2 Sekunden unverwundbar.
 - Kein Eigenbeschuss: Eigene Raketen, Schüsse und Blitze tun dem eigenen Panzer nichts. Einzige Ausnahme ist die Bombe des Böllers.
 - Gespielt wird auf fünf Arenen. Zu Beginn jedes Spiels wird ihre Reihenfolge gemischt, jede Runde kommt die nächste, nach der fünften geht es von vorn los.
+- Wer alle Leben verloren hat, ist nicht einfach raus: Kurz darauf fährt er als Geist auf dem Rand der Arena herum (WASD) und wirft kleine Bomben quer zur Wand nach innen. Leertaste halten wirft weiter, bis 12 Felder. Die Bombe fliegt über Wände hinweg, landet, blinkt kurz und explodiert dann (14 Schaden in der Mitte, 6 am Rand, Radius 1,1). Danach dauert es 4,5 s bis zum nächsten Wurf. Gibt ein Geist damit einem Gegner den Rest, kehrt er mit einem Leben und 30 % Lebensleiste an einem freien Startplatz zurück, kurz geschützt.
 - Die Runde endet, wenn nur noch einer Leben hat. Erwischen sich die letzten beiden gleichzeitig, gewinnen beide.
 - Läuft die Zeit ab, gewinnt, wer die meisten Leben hat, bei Gleichstand, wer mehr Lebensleiste hat. Ist es dann immer noch gleich, gewinnen mehrere.
 - Jeder Rundensieger bekommt einen Punkt. Nach einer kurzen Ehrenrunde, in der man nur noch fahren kann, beginnt die nächste Runde. Wer die eingestellten Punkte erreicht, gewinnt das Spiel.
@@ -42,7 +43,7 @@ Der Gastgeber stellt sie im Raum ein, die Mitspieler sehen sie. Sie gelten ab de
 | Freie Plätze | leer lassen oder **mit Bots füllen** |
 | Tempo | langsam, **mittel** oder schnell |
 
-Das Tempo wirkt auf alles, was sich bewegt oder lädt: Fahren, Drehen, Raketen, Zielkreis, Nachladen, Blitze und Mana laufen mal 0,8 (langsam) oder mal 1,25 (schnell). Reichweiten und Schaden pro Treffer bleiben gleich, die Rakete fliegt also gleich weit. Leben, Pausen nach Abschüssen und die Rundendauer ändern sich nicht.
+Das Tempo wirkt auf alles, was sich bewegt oder lädt: Fahren, Drehen, Raketen, Zielkreis, Nachladen, Blitze, Mana und die Geister laufen mal 0,8 (langsam) oder mal 1,25 (schnell). Reichweiten und Schaden pro Treffer bleiben gleich, die Rakete fliegt also gleich weit. Leben, Pausen nach Abschüssen und die Rundendauer ändern sich nicht.
 
 ## Fahrzeuge
 
@@ -89,7 +90,7 @@ Alle Geräusche entstehen im Browser, ohne Dateien, und sind bewusst sparsam: Sc
 
 ## Musik
 
-Liegt `audio/menu.mp3` im Repository, läuft sie auf der Startseite und im Raum, `audio/game.mp3` während des Spiels, etwas leiser. Beide laufen in einer nahtlosen Schleife, beim Wechsel wird übergeblendet. Der Schalter „Musik“ steht oben rechts im Menü und unten rechts im Spiel, der Browser merkt sich die Einstellung. Fehlt eine Datei, bleibt es an dieser Stelle still. Das Repository und die Seite sind öffentlich, dort sollte also nur Musik liegen, die öffentlich weitergegeben werden darf.
+Liegt `audio/menu.mp3` im Repository, läuft sie auf der Startseite und im Raum, `audio/game.mp3` während des Spiels, leiser, damit die Geräusche durchkommen. Beide laufen in einer nahtlosen Schleife, beim Wechsel wird übergeblendet. Der Schalter „Musik“ steht oben rechts im Menü und unten rechts im Spiel, der Browser merkt sich die Einstellung. Fehlt eine Datei, bleibt es an dieser Stelle still. Das Repository und die Seite sind öffentlich, dort sollte also nur Musik liegen, die öffentlich weitergegeben werden darf.
 
 ## Online stellen
 

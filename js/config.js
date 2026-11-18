@@ -3,7 +3,7 @@
 
 export const TICK_RATE = 60;
 export const DT = 1 / TICK_RATE;
-export const PROTOCOL = 4;
+export const PROTOCOL = 5;
 
 // Plätze im Raum. Alles ist auf eine beliebige Zahl ausgelegt, für mehr
 // Spieler braucht es nur mehr Farben (siehe COLORS) und Arenen mit genug
@@ -168,5 +168,44 @@ export function vehicleFor(index, speed = 1) {
   else if (w.kind === 'zap') Object.assign(w, { pulse: w.pulse / f, drain: w.drain / f, refill: w.refill / f, rest: w.rest / f });
   const out = { ...v, speed: v.speed * f, accel: v.accel * f, brake: v.brake * f, turn: v.turn * f, turret: v.turret * f, weapon: w };
   paced.set(key, out);
+  return out;
+}
+
+// Geister: Wer alle Leben verloren hat, fährt kurz darauf als Geist auf dem
+// Rand der Arena herum und wirft kleine Bomben nach innen. Leertaste halten
+// wirft weiter. Die Bombe fliegt über Wände hinweg, landet und explodiert
+// kurz danach. Wer damit einem Gegner den Rest gibt, kehrt mit einem Leben und
+// einem Teil der Lebensleiste zurück.
+export const GHOST = {
+  delay: 1, // so lange nach dem letzten Leben, bis der Geist erscheint
+  speed: 3.2, // auf dem Rand, Felder pro Sekunde
+  charge: 5, // so schnell wächst die Wurfweite beim Halten
+  min: 1, // Wurfweite beim kurzen Tippen
+  range: 12,
+  cooldown: 4.5,
+  flight: 0.25, // Flugzeit: so lange plus …
+  flightPer: 0.045, // … so lange je Feld
+  fuse: 0.35, // nach der Landung bis zur Explosion
+  radius: 1.1,
+  damage: 14, // in der Mitte, recht schwach
+  edge: 6,
+  revive: 0.3, // so viel Lebensleiste nach der Rückkehr
+};
+
+// Geister im eingestellten Tempo, wie die Fahrzeuge
+const pacedGhost = new Map();
+export function ghostFor(speed = 1) {
+  if (pacedGhost.has(speed)) return pacedGhost.get(speed);
+  const f = speed > 0 ? speed : 1;
+  const out = {
+    ...GHOST,
+    speed: GHOST.speed * f,
+    charge: GHOST.charge * f,
+    cooldown: GHOST.cooldown / f,
+    flight: GHOST.flight / f,
+    flightPer: GHOST.flightPer / f,
+    fuse: GHOST.fuse / f,
+  };
+  pacedGhost.set(speed, out);
   return out;
 }

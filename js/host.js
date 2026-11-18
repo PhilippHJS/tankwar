@@ -5,7 +5,7 @@
 // Jede Nachricht darf verloren gehen, doppelt oder verspätet ankommen:
 // Spielstände tragen ihre Schrittnummer, Eingaben eine laufende Nummer.
 
-import { createSim, startMatch, backToLobby, stepSim, retire, alive, modeOf, PHASE } from './sim.js';
+import { createSim, startMatch, backToLobby, stepSim, retire, alive, ghostActive, modeOf, PHASE } from './sim.js';
 import { createBot } from './bots.js';
 import { MAX_INPUT } from './physics.js';
 import { randomSeed } from './rng.js';
@@ -96,8 +96,10 @@ export function createHost({ levels, autoRestart = false, onChange = () => {} } 
           p.in ? 1 : 0, r4(t.x), r4(t.y), r4(t.h), r4(t.a), r4(t.v), t.cd,
           p.hp, p.lives, p.dead, p.shield, p.points, p.tp, p.vehicle, p.kills,
           t.ammo, r4(t.ch), r4(t.mana), t.zt, t.rest, t.lock, t.on, r4(t.ox), r4(t.oy), r4(t.ca),
+          ghostActive(sim, p) ? 1 : 0, r4(p.ghost.s), p.ghost.cd, r4(p.ghost.ch),
         ];
       }),
+      g: sim.bombs.map((b) => [b.id, b.owner, r4(b.sx), r4(b.sy), r4(b.tx), r4(b.ty), b.k0, b.land, b.boom]),
       r: sim.rockets.map((r) => [r.id, r.owner, r.seq, r4(r.x), r4(r.y), r4(r.vx), r4(r.vy), r.life, r.b]),
       w: sim.winners,
       c: sim.champions,
@@ -226,7 +228,7 @@ export function createHost({ levels, autoRestart = false, onChange = () => {} } 
   function inputsFor(slot) {
     const p = sim.players[slot.index];
     const human = slot.kind === 'human' && slot.online;
-    if (modeOf(sim.phase) < 0 || !p.in || !alive(p)) {
+    if (modeOf(sim.phase) < 0 || !p.in || (!alive(p) && !ghostActive(sim, p))) {
       drain(slot);
       return [];
     }

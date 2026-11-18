@@ -15,7 +15,7 @@ import { audioContext } from './sound.js';
 const FADE = 0.8; // Sekunden zum Ein- und Ausblenden
 const TRACKS = {
   menu: { url: 'audio/menu.mp3', volume: 0.45 },
-  game: { url: 'audio/game.mp3', volume: 0.3 }, // leiser, damit die Geräusche durchkommen
+  game: { url: 'audio/game.mp3', volume: 0.24 }, // leiser, damit die Geräusche durchkommen
 };
 
 export function createMusic({ muted = false, onChange = () => {} } = {}) {

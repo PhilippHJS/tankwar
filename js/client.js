@@ -15,9 +15,10 @@
 import { arenaOf } from './arenas.js';
 import {
   newTank, copyTank, stepTank, launchRocket, stepRocket, copyRocket, gunRay, rayHitsCircle, blastPoint, IDLE, inputFire, withoutFire, wrap, angleDiff,
+  newGhost, copyGhost, stepGhost, rimPoint, rimLength, ghostTarget,
 } from './physics.js';
 import { PHASE, EVENT, modeOf } from './sim.js';
-import { DT, TICK_RATE, PROTOCOL, MAX_PLAYERS, VEHICLES, BOT_NAMES, TANK_R, cleanVehicle, rulesFor, vehicleFor } from './config.js';
+import { DT, TICK_RATE, PROTOCOL, MAX_PLAYERS, VEHICLES, BOT_NAMES, TANK_R, cleanVehicle, rulesFor, vehicleFor, ghostFor } from './config.js';
 
 const STEP_MS = DT * 1000;
 const LOST_MS = 5000;
@@ -26,11 +27,14 @@ const LOST_MS = 5000;
 export const P = {
   IN: 0, X: 1, Y: 2, H: 3, A: 4, V: 5, CD: 6, HP: 7, LIVES: 8, DEAD: 9, SHIELD: 10, PTS: 11, TP: 12, VEH: 13, KILLS: 14,
   AMMO: 15, CH: 16, MANA: 17, ZT: 18, REST: 19, LOCK: 20, ON: 21, OX: 22, OY: 23, CA: 24,
+  GA: 25, GS: 26, GCD: 27, GCH: 28, // Geist: aktiv, Stelle auf dem Rand, Pause bis zum nächsten Wurf, Wurfweite
 };
+// Felder einer Geisterbombe
+const B = { ID: 0, OWNER: 1, SX: 2, SY: 3, TX: 4, TY: 5, K0: 6, LAND: 7, BOOM: 8 };
 // Felder einer Rakete
 const R = { ID: 0, OWNER: 1, SEQ: 2, X: 3, Y: 4, VX: 5, VY: 6, LIFE: 7, B: 8 };
 // Zusätzliche Effekte neben den Ereignissen des Gastgebers
-export const FX = { FIRE: 100 };
+export const FX = { FIRE: 100, THROW: 101 };
 
 export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
   const client = {
@@ -50,6 +54,8 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
   const pending = []; // eigene Eingaben, die der Gastgeber noch nicht bestätigt hat
   const me = newTank(0, 0, 0);
   const mePrev = newTank(0, 0, 0);
+  const ghost = newGhost(); // der eigene Geist, vorausberechnet
+  const ghostPrev = newGhost();
   const err = { x: 0, y: 0 };
   const seenEvents = new Set();
   const seenRockets = new Set();
@@ -117,6 +123,21 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
     tank.ca = arr[P.CA];
   }
   const isLive = (arr) => arr[P.IN] === 1 && arr[P.LIVES] > 0 && arr[P.DEAD] === 0;
+  const isGhost = (arr) => arr[P.GA] === 1;
+  const ghostParams = () => ghostFor(speedNow());
+  function loadGhost(g, arr) {
+    g.s = arr[P.GS];
+    g.cd = arr[P.GCD];
+    g.ch = arr[P.GCH];
+  }
+  // Auf dem Ring zwischen zwei Stellen, über den kürzeren Weg
+  function rimMix(a, b, f) {
+    const L = rimLength(client.arena);
+    let d = b - a;
+    if (d > L / 2) d -= L;
+    else if (d < -L / 2) d += L;
+    return (((a + d * f) % L) + L) % L;
+  }
 
   // Gültigen Stand übernehmen und die offenen Eingaben erneut anwenden
   function reconcile(snap) {
@@ -132,6 +153,16 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
       for (let i = 0; i < pending.length; i += 1) {
         if (i === pending.length - 1) copyTank(me, mePrev);
         stepTank(client.arena, me, pending[i].code, vehicle, mode, others);
+      }
+    }
+    // Als Geist: Stelle auf dem Rand und Wurfweite genauso vorausberechnen
+    if (isGhost(arr)) {
+      loadGhost(ghost, arr);
+      copyGhost(ghost, ghostPrev);
+      const params = ghostParams();
+      for (let i = 0; i < pending.length; i += 1) {
+        if (i === pending.length - 1) copyGhost(ghost, ghostPrev);
+        stepGhost(client.arena, ghost, pending[i].code, params, mode);
       }
     }
     renderMe(after);
@@ -326,6 +357,11 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
       copyTank(me, mePrev);
       const shot = isLive(arr) ? stepTank(client.arena, me, code, vehicle, mode, others) : 0;
       if (shot) showShot(vehicle.weapon, shot);
+      if (isGhost(arr)) {
+        copyGhost(ghost, ghostPrev);
+        const at = rimPoint(client.arena, ghost.s);
+        if (stepGhost(client.arena, ghost, code, ghostParams(), mode)) client.effects.push({ kind: FX.THROW, by: client.slot, x: at.x, y: at.y });
+      }
       recent.push(code);
       if (recent.length > 8) recent.shift();
       stepsSinceSend += 1;
@@ -393,6 +429,19 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
     return lerpOut;
   }
 
+  function ghostAt(slot, tick) {
+    const n = snaps.length;
+    if (!n) return null;
+    let b = 0;
+    while (b < n && snaps[b].k <= tick) b += 1;
+    if (b === 0) return snaps[0].p[slot][P.GS];
+    const pa = snaps[b - 1].p[slot];
+    if (b === n) return pa[P.GS];
+    const pb = snaps[b].p[slot];
+    if (!isGhost(pa) || !isGhost(pb)) return pb[P.GS];
+    return rimMix(pa[P.GS], pb[P.GS], (tick - snaps[b - 1].k) / (snaps[b].k - snaps[b - 1].k));
+  }
+
   // Raketen des Gastgebers bis in die Gegenwart weitergerechnet
   const probe = {};
   const next = {};
@@ -419,7 +468,7 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
 
   const view = {
     ready: false, phase: PHASE.LOBBY, round: 0, tick: 0, ticksLeft: 0, arena: client.arena, levels: null,
-    slot: -1, winners: [], champions: [], rockets: [],
+    slot: -1, winners: [], champions: [], rockets: [], bombs: [],
     players: Array.from({ length: MAX_PLAYERS }, (_, slot) => ({
       slot, in: false, x: 0, y: 0, h: 0, a: 0, v: 0, hp: 0, maxHp: 100, lives: 0, dead: 0, shield: 0,
       points: 0, kills: 0, tp: 0, vehicle: 0, reload: 1, ammo: 0, ch: 0, ox: 0, oy: 0, ca: 0, mana: 1, on: 0, name: BOT_NAMES[slot], kind: 'free', online: true, mine: false,
@@ -475,6 +524,25 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
       out.ox = tank ? tank.ox : arr[P.OX];
       out.oy = tank ? tank.oy : arr[P.OY];
       out.ca = tank ? tank.ca : arr[P.CA];
+      // Geist
+      out.ghost = isGhost(arr);
+      if (out.ghost) {
+        const mine = out.mine && haveMe;
+        const s = mine ? rimMix(ghostPrev.s, ghost.s, alpha) : ghostAt(out.slot, renderTick);
+        const at = rimPoint(client.arena, s);
+        out.gx = at.x;
+        out.gy = at.y;
+        out.gnx = at.nx;
+        out.gny = at.ny;
+        out.gch = mine ? ghost.ch : arr[P.GCH];
+        const cdMax = Math.max(1, Math.round(ghostParams().cooldown * TICK_RATE));
+        out.gready = 1 - Math.min(cdMax, Math.max(0, mine ? ghost.cd : arr[P.GCD])) / cdMax;
+        if (out.gch > 0) {
+          const target = ghostTarget(client.arena, { s }, out.gch);
+          out.gtx = target.x;
+          out.gty = target.y;
+        }
+      }
       // Nachladen: 1 heißt bereit
       const w = vehicleFor(out.vehicle, speedNow()).weapon;
       const cdSecs = w.kind === 'gun' ? (out.ammo <= 0 ? w.reload : w.interval) : w.cooldown || 0;
@@ -486,6 +554,19 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
         out.kind = info.kind;
         out.online = info.online;
       }
+    }
+
+    // Geisterbomben: im Bogen vom Rand zum Ziel, dann liegen sie kurz und blinken
+    view.bombs.length = 0;
+    for (const b of latest.g || []) {
+      if (hostTick >= b[B.BOOM]) continue;
+      const f = Math.min(1, Math.max(0, (hostTick - b[B.K0]) / Math.max(1, b[B.LAND] - b[B.K0])));
+      view.bombs.push({
+        id: b[B.ID], owner: b[B.OWNER],
+        x: b[B.SX] + (b[B.TX] - b[B.SX]) * f, y: b[B.SY] + (b[B.TY] - b[B.SY]) * f,
+        tx: b[B.TX], ty: b[B.TY], height: Math.sin(Math.PI * f), landed: f >= 1,
+        fuse: f >= 1 ? Math.min(1, (hostTick - b[B.LAND]) / Math.max(1, b[B.BOOM] - b[B.LAND])) : 0,
+      });
     }
 
     // Raketen: bestätigte bis in die Gegenwart, eigene noch unbestätigte dazu

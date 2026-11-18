@@ -11,17 +11,21 @@
 
 import { ARENAS, arenaOf } from './arenas.js';
 import { makeRng } from './rng.js';
-import { newTank, stepTank, launchRocket, stepRocket, gunRay, rayHitsCircle, blastPoint, blastDamage, inZapReach, MODE } from './physics.js';
+import {
+  newTank, stepTank, launchRocket, stepRocket, gunRay, rayHitsCircle, blastPoint, blastDamage, inZapReach, MODE,
+  newGhost, stepGhost, rimPoint, rimNearest, ghostTarget, ghostDamage,
+} from './physics.js';
 import {
   MAX_PLAYERS, TICK_RATE, LIVES, RESPAWN_TICKS, SHIELD_TICKS, COUNTDOWN_TICKS, RESULT_TICKS, EVENT_TICKS,
-  TANK_R, ROCKET_R, DEFAULT_LEVELS, DEFAULT_RULES, cleanLevels, rulesFor, cleanVehicle, vehicleFor,
+  TANK_R, ROCKET_R, DEFAULT_LEVELS, DEFAULT_RULES, cleanLevels, rulesFor, cleanVehicle, vehicleFor, ghostFor, GHOST,
 } from './config.js';
 
 export const PHASE = { LOBBY: 0, COUNTDOWN: 1, PLAY: 2, RESULT: 3, OVER: 4 };
 // Treffer, Treffer auf den Schutz, Abschuss (item: verbleibende Leben),
 // Rakete verpufft, Wiedereinstieg, Pistolenschuss (von x, y bis x2, y2),
-// Bombe (item: Radius in Hundertsteln), Blitz (of: getroffen, item: Schaden)
-export const EVENT = { HIT: 0, BLOCK: 1, DESTROY: 2, POP: 3, SPAWN: 4, SHOT: 5, BLAST: 6, ZAP: 7 };
+// Bombe (item: Radius in Hundertsteln), Blitz (of: getroffen, item: Schaden),
+// Geisterbombe explodiert (item: Radius in Hundertsteln), Geist kehrt zurück
+export const EVENT = { HIT: 0, BLOCK: 1, DESTROY: 2, POP: 3, SPAWN: 4, SHOT: 5, BLAST: 6, ZAP: 7, GBLAST: 8, REVIVE: 9 };
 
 export function createSim(count = MAX_PLAYERS) {
   return {
@@ -39,11 +43,14 @@ export function createSim(count = MAX_PLAYERS) {
     // in: spielt in dieser Runde mit; dead: Schritte bis zum Wiedereinstieg;
     // shield: Restzeit des Schutzes; outAt: Schritt, in dem das letzte Leben
     // verloren ging; tp: zählt jeden Sprung an einen neuen Ort
+    // ghost: als Geist auf dem Rand (siehe GHOST); gone: ist gegangen, kein Geist
     players: Array.from({ length: count }, (_, slot) => ({
       slot, in: false, vehicle: 0, tank: newTank(0, 0, 0), hp: 0, lives: 0, dead: 0, shield: 0, outAt: 0,
-      points: 0, kills: 0, tp: 0,
+      points: 0, kills: 0, tp: 0, ghost: newGhost(), gone: false,
     })),
     rockets: [], // { id, owner, seq, x, y, vx, vy, life, b }
+    bombs: [], // Geisterbomben { id, owner, sx, sy, tx, ty, k0, land, boom }
+    nextBomb: 1,
     nextRocket: 1,
     events: [],
     nextEvent: 1,
@@ -55,6 +62,13 @@ export function createSim(count = MAX_PLAYERS) {
 // Das Fahrzeug eines Spielers im Tempo des laufenden Spiels
 export const vehicleOf = (sim, player) => vehicleFor(player.vehicle, sim.rules.speed);
 export const alive = (player) => player.in && player.lives > 0 && player.dead === 0;
+export const ghostParams = (sim) => ghostFor(sim.rules.speed);
+// Ist dieser Spieler gerade ein Geist auf dem Rand?
+export function ghostActive(sim, p) {
+  if (!p.in || p.lives > 0 || p.gone) return false;
+  if (sim.phase !== PHASE.PLAY && sim.phase !== PHASE.RESULT) return false;
+  return sim.tick - p.outAt >= Math.round(GHOST.delay * TICK_RATE);
+}
 
 // In welcher Phase die Panzer was dürfen (siehe MODE), -1: gar nichts
 export function modeOf(phase) {
@@ -91,6 +105,7 @@ export function nextRound(sim, lineup) {
   sim.phase = PHASE.COUNTDOWN;
   sim.phaseEnd = sim.tick + COUNTDOWN_TICKS;
   sim.rockets = [];
+  sim.bombs = [];
   sim.winners = [];
   const chosen = new Map(lineup.map((entry) => [entry.slot, entry]));
   const order = sim.rng.shuffle(sim.arena.spawns.map((_, i) => i));
@@ -101,6 +116,8 @@ export function nextRound(sim, lineup) {
     p.dead = 0;
     p.shield = 0;
     p.outAt = 0;
+    p.ghost = newGhost();
+    p.gone = false;
     if (!p.in) {
       p.lives = 0;
       p.hp = 0;
@@ -120,6 +137,7 @@ export function nextRound(sim, lineup) {
 export function backToLobby(sim) {
   sim.phase = PHASE.LOBBY;
   sim.rockets = [];
+  sim.bombs = [];
   sim.winners = [];
   sim.champions = [];
   for (const p of sim.players) p.in = false;
@@ -133,6 +151,7 @@ export function retire(sim, slot) {
   p.hp = 0;
   p.dead = 0;
   p.outAt = sim.tick;
+  p.gone = true;
 }
 
 // Der Startplatz, der am weitesten von allen anderen Panzern weg ist.
@@ -166,8 +185,9 @@ function respawn(sim, p) {
 }
 
 // Schaden an einem Panzer. Schutz hält alles ab. `quiet`: keine eigene
-// Treffermeldung (die Bombe und die Blitze melden sich selbst).
-function hurt(sim, p, dmg, by, x, y, quiet = false) {
+// Treffermeldung (die Bombe und die Blitze melden sich selbst). `ghost`: kam
+// von einer Geisterbombe; gibt sie den Rest, kehrt der Geist zurück.
+function hurt(sim, p, dmg, by, x, y, quiet = false, ghost = false) {
   if (p.shield > 0) {
     if (!quiet) addEvent(sim, EVENT.BLOCK, by, p.slot, x, y);
     return false;
@@ -182,8 +202,69 @@ function hurt(sim, p, dmg, by, x, y, quiet = false) {
   if (shooter && shooter !== p) shooter.kills += 1;
   addEvent(sim, EVENT.DESTROY, by, p.slot, p.tank.x, p.tank.y, p.lives);
   if (p.lives > 0) p.dead = RESPAWN_TICKS;
-  else p.outAt = sim.tick;
+  else {
+    p.outAt = sim.tick;
+    p.ghost = newGhost(rimNearest(sim.arena, p.tank.x, p.tank.y));
+  }
+  if (ghost && shooter && shooter !== p && shooter.in && shooter.lives <= 0 && !shooter.gone) revive(sim, shooter);
   return true;
+}
+
+// Ein Geist hat einem Gegner den Rest gegeben: zurück mit einem Leben und
+// einem Teil der Lebensleiste, an einem freien Startplatz, kurz geschützt
+function revive(sim, p) {
+  p.lives = 1;
+  p.outAt = 0;
+  p.dead = 0;
+  p.ghost = newGhost();
+  respawn(sim, p);
+  p.hp = Math.max(1, Math.round(vehicleOf(sim, p).health * GHOST.revive));
+  addEvent(sim, EVENT.REVIVE, p.slot, p.slot, p.tank.x, p.tank.y);
+}
+
+function throwBomb(sim, p, dist) {
+  const params = ghostParams(sim);
+  const from = rimPoint(sim.arena, p.ghost.s);
+  const to = ghostTarget(sim.arena, p.ghost, dist);
+  const flight = Math.max(1, Math.round((params.flight + params.flightPer * dist) * TICK_RATE));
+  const fuse = Math.round(params.fuse * TICK_RATE);
+  sim.bombs.push({
+    id: sim.nextBomb, owner: p.slot, sx: from.x, sy: from.y, tx: to.x, ty: to.y,
+    k0: sim.tick, land: sim.tick + flight, boom: sim.tick + flight + fuse,
+  });
+  sim.nextBomb += 1;
+}
+
+function stepGhosts(sim, inputs, mode) {
+  const params = ghostParams(sim);
+  for (const p of sim.players) {
+    if (!ghostActive(sim, p)) continue;
+    for (const [code] of inputs[p.slot] || []) {
+      const dist = stepGhost(sim.arena, p.ghost, code, params, mode);
+      if (dist) throwBomb(sim, p, dist);
+    }
+  }
+}
+
+// Geisterbomben explodieren nach Flug und kurzer Verzögerung. Sie treffen
+// alle Panzer im Umkreis, nur nicht den, der sie geworfen hat.
+function stepBombs(sim, damage) {
+  const params = ghostParams(sim);
+  const keep = [];
+  for (const b of sim.bombs) {
+    if (sim.tick < b.boom) {
+      keep.push(b);
+      continue;
+    }
+    addEvent(sim, EVENT.GBLAST, b.owner, -1, b.tx, b.ty, Math.round(params.radius * 100));
+    if (!damage) continue;
+    for (const q of sim.players) {
+      if (q.slot === b.owner || !alive(q)) continue;
+      const dmg = ghostDamage(params, Math.hypot(q.tank.x - b.tx, q.tank.y - b.ty));
+      if (dmg > 0) hurt(sim, q, dmg, b.owner, q.tank.x, q.tank.y, true, true);
+    }
+  }
+  sim.bombs = keep;
 }
 
 function fireGun(sim, p, w) {
@@ -338,18 +419,23 @@ export function stepSim(sim, inputs, lineup = []) {
     }
   } else if (sim.phase === PHASE.PLAY) {
     stepTanks(sim, inputs, mode);
+    stepGhosts(sim, inputs, mode);
     stepRockets(sim, true);
+    stepBombs(sim, true);
     stepTimers(sim);
     checkEnd(sim);
   } else if (sim.phase === PHASE.RESULT) {
     // Ehrenrunde: fahren ja, schießen nein, Treffer zählen nicht mehr
     stepTanks(sim, inputs, mode);
+    stepGhosts(sim, inputs, mode);
     stepRockets(sim, false);
+    stepBombs(sim, false);
     stepTimers(sim);
     if (sim.tick >= sim.phaseEnd) {
       if (sim.champions.length) {
         sim.phase = PHASE.OVER;
         sim.rockets = [];
+        sim.bombs = [];
       } else {
         nextRound(sim, lineup);
       }
