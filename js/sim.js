@@ -14,7 +14,7 @@ import { makeRng } from './rng.js';
 import { newTank, stepTank, launchRocket, stepRocket, gunRay, rayHitsCircle, blastPoint, blastDamage, inZapReach, MODE } from './physics.js';
 import {
   MAX_PLAYERS, TICK_RATE, LIVES, RESPAWN_TICKS, SHIELD_TICKS, COUNTDOWN_TICKS, RESULT_TICKS, EVENT_TICKS,
-  TANK_R, ROCKET_R, VEHICLES, DEFAULT_LEVELS, DEFAULT_RULES, cleanLevels, rulesFor, cleanVehicle,
+  TANK_R, ROCKET_R, DEFAULT_LEVELS, DEFAULT_RULES, cleanLevels, rulesFor, cleanVehicle, vehicleFor,
 } from './config.js';
 
 export const PHASE = { LOBBY: 0, COUNTDOWN: 1, PLAY: 2, RESULT: 3, OVER: 4 };
@@ -52,7 +52,8 @@ export function createSim(count = MAX_PLAYERS) {
   };
 }
 
-export const vehicleOf = (player) => VEHICLES[cleanVehicle(player.vehicle)];
+// Das Fahrzeug eines Spielers im Tempo des laufenden Spiels
+export const vehicleOf = (sim, player) => vehicleFor(player.vehicle, sim.rules.speed);
 export const alive = (player) => player.in && player.lives > 0 && player.dead === 0;
 
 // In welcher Phase die Panzer was dürfen (siehe MODE), -1: gar nichts
@@ -108,8 +109,8 @@ export function nextRound(sim, lineup) {
     p.vehicle = cleanVehicle(entry.vehicle);
     const spawn = sim.arena.spawns[order[seat % order.length]];
     seat += 1;
-    p.tank = newTank(spawn.x, spawn.y, spawn.h, vehicleOf(p));
-    p.hp = vehicleOf(p).health;
+    p.tank = newTank(spawn.x, spawn.y, spawn.h, vehicleOf(sim, p));
+    p.hp = vehicleOf(sim, p).health;
     p.lives = LIVES;
     p.tp += 1;
   }
@@ -156,9 +157,9 @@ function freeSpawn(sim, me) {
 function respawn(sim, p) {
   const spawn = freeSpawn(sim, p);
   const turret = p.tank.a;
-  p.tank = newTank(spawn.x, spawn.y, spawn.h, vehicleOf(p));
+  p.tank = newTank(spawn.x, spawn.y, spawn.h, vehicleOf(sim, p));
   p.tank.a = turret;
-  p.hp = vehicleOf(p).health;
+  p.hp = vehicleOf(sim, p).health;
   p.shield = SHIELD_TICKS;
   p.tp += 1;
   addEvent(sim, EVENT.SPAWN, p.slot, p.slot, spawn.x, spawn.y);
@@ -232,7 +233,7 @@ function stepTanks(sim, inputs, mode) {
     if (!alive(p) || mode < 0) continue;
     const others = [];
     for (const q of sim.players) if (q !== p && alive(q)) others.push(q.tank);
-    const vehicle = vehicleOf(p);
+    const vehicle = vehicleOf(sim, p);
     const w = vehicle.weapon;
     for (const [code, seq] of list) {
       if (!alive(p)) break; // die eigene Bombe kann den eigenen Panzer zerstören
@@ -267,7 +268,7 @@ function stepRockets(sim, damage) {
       gone = true;
       const shooter = sim.players[r.owner];
       if (!damage) addEvent(sim, EVENT.BLOCK, r.owner, p.slot, r.x, r.y);
-      else hurt(sim, p, shooter ? vehicleOf(shooter).weapon.damage : 0, r.owner, r.x, r.y);
+      else hurt(sim, p, shooter ? vehicleOf(sim, shooter).weapon.damage : 0, r.owner, r.x, r.y);
       break;
     }
     if (gone) continue;

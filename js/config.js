@@ -3,7 +3,7 @@
 
 export const TICK_RATE = 60;
 export const DT = 1 / TICK_RATE;
-export const PROTOCOL = 3;
+export const PROTOCOL = 4;
 
 // Plätze im Raum. Alles ist auf eine beliebige Zahl ausgelegt, für mehr
 // Spieler braucht es nur mehr Farben (siehe COLORS) und Arenen mit genug
@@ -121,6 +121,7 @@ export const SETTINGS = [
   { key: 'length', label: 'Rundendauer', options: ['1 min', '2 min', '3 min', '5 min'], values: [60, 120, 180, 300], normal: 2 },
   { key: 'target', label: 'Punkte zum Sieg', options: ['1', '2', '3', '4', '5'], values: [1, 2, 3, 4, 5], normal: 2 },
   { key: 'bots', label: 'Freie Plätze', options: ['leer lassen', 'mit Bots füllen'], values: [false, true], normal: 1 },
+  { key: 'speed', label: 'Tempo', options: ['langsam', 'mittel', 'schnell'], values: [0.8, 1, 1.25], normal: 1 },
 ];
 export const DEFAULT_LEVELS = SETTINGS.map((setting) => setting.normal);
 
@@ -143,8 +144,29 @@ export function rulesFor(levels) {
     seconds: value.length,
     target: value.target,
     bots: value.bots,
+    speed: value.speed, // Faktor auf das ganze Spieltempo
   };
 }
 export const DEFAULT_RULES = rulesFor(DEFAULT_LEVELS);
 
 export const cleanVehicle = (index) => (Number.isInteger(index) && index >= 0 && index < VEHICLES.length ? index : 0);
+
+// Ein Fahrzeug im eingestellten Tempo. Alles, was sich bewegt oder lädt, wird
+// um den Faktor schneller oder langsamer: Fahren, Drehen, Raketen, Zielkreis,
+// Nachladen, Blitze und Mana. Reichweiten und Schaden pro Treffer bleiben
+// gleich, die Rakete fliegt also gleich weit.
+const paced = new Map();
+export function vehicleFor(index, speed = 1) {
+  const key = `${cleanVehicle(index)}|${speed}`;
+  if (paced.has(key)) return paced.get(key);
+  const v = VEHICLES[cleanVehicle(index)];
+  const f = speed > 0 ? speed : 1;
+  const w = { ...v.weapon };
+  if (w.kind === 'rocket') Object.assign(w, { speed: w.speed * f, cooldown: w.cooldown / f, life: w.life / f });
+  else if (w.kind === 'gun') Object.assign(w, { interval: w.interval / f, reload: w.reload / f });
+  else if (w.kind === 'mortar') Object.assign(w, { charge: w.charge * f, cooldown: w.cooldown / f });
+  else if (w.kind === 'zap') Object.assign(w, { pulse: w.pulse / f, drain: w.drain / f, refill: w.refill / f, rest: w.rest / f });
+  const out = { ...v, speed: v.speed * f, accel: v.accel * f, brake: v.brake * f, turn: v.turn * f, turret: v.turret * f, weapon: w };
+  paced.set(key, out);
+  return out;
+}

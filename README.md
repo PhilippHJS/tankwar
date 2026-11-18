@@ -40,10 +40,13 @@ Der Gastgeber stellt sie im Raum ein, die Mitspieler sehen sie. Sie gelten ab de
 | Rundendauer | 1, 2, **3** oder 5 Minuten |
 | Punkte zum Sieg | 1 bis 5, normal **3** |
 | Freie Plätze | leer lassen oder **mit Bots füllen** |
+| Tempo | langsam, **mittel** oder schnell |
+
+Das Tempo wirkt auf alles, was sich bewegt oder lädt: Fahren, Drehen, Raketen, Zielkreis, Nachladen, Blitze und Mana laufen mal 0,8 (langsam) oder mal 1,25 (schnell). Reichweiten und Schaden pro Treffer bleiben gleich, die Rakete fliegt also gleich weit. Leben, Pausen nach Abschüssen und die Rundendauer ändern sich nicht.
 
 ## Fahrzeuge
 
-Alle haben 100 Lebensleiste. Tempo in Feldern pro Sekunde, die Arenen sind 22 × 14 Felder groß.
+Alle haben 100 Lebensleiste. Tempo in Feldern pro Sekunde bei mittlerem Tempo, die Arenen sind 22 × 14 Felder groß.
 
 | Fahrzeug | Tempo | Waffe |
 | --- | --- | --- |

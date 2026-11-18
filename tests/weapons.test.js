@@ -164,3 +164,50 @@ test('Bombe: Startpunkt und Richtung gelten ab dem Drücken, Fahren und Pfeile �
   step(packInput(0, up, false), 30);
   assert.ok(me.tank.a < -1, 'Turm dreht wieder');
 });
+
+test('Tempo: schnell und langsam ändern alles, was sich bewegt oder lädt, aber nicht die Reichweite', async () => {
+  const { vehicleFor, SETTINGS, rulesFor } = await import('../js/config.js');
+  const { launchRocket, stepRocket } = await import('../js/physics.js');
+  const speeds = SETTINGS.find((s) => s.key === 'speed').values;
+  assert.deepEqual(speeds, [0.8, 1, 1.25]);
+  assert.equal(rulesFor([0, 0, 0]).speed, 1, 'mittel ist der Normalfall');
+  for (const f of speeds) {
+    for (let i = 0; i < VEHICLES.length; i += 1) {
+      const v = vehicleFor(i, f);
+      assert.ok(Math.abs(v.speed - VEHICLES[i].speed * f) < 1e-9);
+      assert.ok(Math.abs(v.turret - VEHICLES[i].turret * f) < 1e-9);
+    }
+    // Rakete: gleiche Strecke, schneller vorbei
+    const w = vehicleFor(0, f).weapon;
+    const r = launchRocket(arenaOf(0), newTank(2.5, 1.6, 0), w);
+    let steps = 0;
+    let dist = 0;
+    while (r.life > 0) {
+      const x = r.x;
+      const y = r.y;
+      stepRocket(arenaOf(0), r);
+      dist += Math.hypot(r.x - x, r.y - y);
+      steps += 1;
+    }
+    assert.ok(Math.abs(dist - VEHICLES[0].weapon.speed * VEHICLES[0].weapon.life) < 0.25, `Strecke ${dist.toFixed(2)}`);
+    assert.ok(Math.abs(steps - Math.round((VEHICLES[0].weapon.life / f) * TICK_RATE)) <= 1);
+  }
+  // Im Spiel: schneller Panzer fährt in einer Sekunde weiter
+  const run = (level) => {
+    const sim = createSim(4);
+    const lineup = [{ slot: 0, vehicle: 0 }, { slot: 1, vehicle: 0 }];
+    startMatch(sim, 1, [0, 4, 1, level], lineup);
+    sim.order = [0];
+    sim.arena = arenaOf(0);
+    while (sim.phase === PHASE.COUNTDOWN) stepSim(sim, idle(), lineup);
+    sim.players[0].tank = newTank(3.5, 1.6, 0, VEHICLES[0]);
+    for (let i = 0; i < TICK_RATE; i += 1) {
+      const inputs = idle();
+      inputs[0] = [[packInput(1, -1, false), 1]];
+      stepSim(sim, inputs, lineup);
+    }
+    return sim.players[0].tank.x - 3.5;
+  };
+  const [slow, mid, fast] = [run(0), run(1), run(2)];
+  assert.ok(slow < mid && mid < fast, `${slow.toFixed(2)} < ${mid.toFixed(2)} < ${fast.toFixed(2)}`);
+});

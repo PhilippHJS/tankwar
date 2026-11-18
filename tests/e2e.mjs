@@ -185,6 +185,7 @@ async function run(mode) {
   // Einstellungen: 1 Minute, 1 Punkt zum Sieg. Gäste sehen sie, können sie aber nicht ändern.
   await host.click('#options label:has(input[name="opt-length"][value="0"])');
   await host.click('#options label:has(input[name="opt-target"][value="0"])');
+  await host.click('#options label:has(input[name="opt-speed"][value="2"])');
   await until(guests[0], () => document.querySelector('#options input[name="opt-target"][value="0"]').checked && document.querySelector('#settings').disabled);
   check(true, 'Gast sieht die Einstellungen des Gastgebers, ausgegraut');
   if (direct) {
@@ -198,6 +199,8 @@ async function run(mode) {
   await sleep(1200);
   if (direct) await shot(guests[0], '04-countdown');
   for (const page of all) await until(page, (phase) => window.__tankwar.view().phase === phase, PHASE.PLAY);
+  const pace = await host.evaluate(() => window.__tankwar.session.host.sim.rules.speed);
+  check(pace === 1.25, `Tempo schnell gilt im Spiel (${pace})`);
   const rides = await host.evaluate(() => window.__tankwar.session.host.sim.players.map((p) => p.vehicle).join());
   const danaSlot = (await view(guests[2])).slot;
   check(rides.split(',')[danaSlot] === '3', `gewählte Fahrzeuge fahren mit (${rides})`);
@@ -221,13 +224,15 @@ async function run(mode) {
   check(off < 0.05, `eigener Panzer stimmt mit dem Gastgeber überein (${off.toFixed(3)})`);
 
   // Zielen mit den Pfeiltasten: zwei zugleich zielen schräg dazwischen, der Turm bleibt dort
+  // (gemessen, solange beide gedrückt sind: Das Loslassen prüft tests/input.test.js,
+  // hier wäre es vom Takt des Testbrowsers abhängig)
   await g.keyboard.down('ArrowUp');
   await g.keyboard.down('ArrowRight');
-  await sleep(1300);
+  await sleep(direct ? 1500 : 2000);
+  const turret = await host.evaluate((slot) => window.__tankwar.session.host.sim.players[slot].tank.a, gs.slot);
   await g.keyboard.up('ArrowUp');
   await g.keyboard.up('ArrowRight');
-  await sleep(direct ? 400 : 900);
-  const turret = await host.evaluate((slot) => window.__tankwar.session.host.sim.players[slot].tank.a, gs.slot);
+  await sleep(300);
   check(Math.abs(turret + Math.PI / 4) < 0.03, `Pfeil hoch und rechts zielen schräg nach rechts oben (${turret.toFixed(2)})`);
   await g.keyboard.down('ArrowLeft');
   await sleep(1600);
@@ -314,7 +319,9 @@ async function run(mode) {
 try {
   // MODES=vermittler node tests/e2e.mjs spielt nur einen der beiden Durchgänge
   for (const mode of (process.env.MODES || 'direkt,vermittler').split(',')) await run(mode);
-  const leaked = overheard.some((text) => /Anna|Ben|Dana|hello|lobby/.test(text));
+  // Nur längere Wörter suchen: Drei Buchstaben wie "Ben" tauchen in so vielen
+  // verschlüsselten Bytes auch rein zufällig auf.
+  const leaked = overheard.some((text) => /Anna|Dana|"hello"|"lobby"/.test(text));
   check(overheard.length > 0 && !leaked, `Vermittler sehen nur Verschlüsseltes (${overheard.length} Nachrichten)`);
 } catch (err) {
   problems.push(`Abbruch: ${err.message}`);

@@ -17,7 +17,7 @@ import {
   newTank, copyTank, stepTank, launchRocket, stepRocket, copyRocket, gunRay, rayHitsCircle, blastPoint, IDLE, inputFire, withoutFire, wrap, angleDiff,
 } from './physics.js';
 import { PHASE, EVENT, modeOf } from './sim.js';
-import { DT, TICK_RATE, PROTOCOL, MAX_PLAYERS, VEHICLES, BOT_NAMES, TANK_R, cleanVehicle } from './config.js';
+import { DT, TICK_RATE, PROTOCOL, MAX_PLAYERS, VEHICLES, BOT_NAMES, TANK_R, cleanVehicle, rulesFor, vehicleFor } from './config.js';
 
 const STEP_MS = DT * 1000;
 const LOST_MS = 5000;
@@ -84,7 +84,9 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
     return best + now / STEP_MS;
   }
 
-  const myVehicle = () => VEHICLES[cleanVehicle(client.latest && client.slot >= 0 ? client.latest.p[client.slot][P.VEH] : client.vehicle)];
+  // Das eigene Fahrzeug im Tempo des laufenden Spiels, wie beim Gastgeber
+  const speedNow = () => (client.latest ? rulesFor(client.latest.o).speed : 1);
+  const myVehicle = () => vehicleFor(client.latest && client.slot >= 0 ? client.latest.p[client.slot][P.VEH] : client.vehicle, speedNow());
 
   function renderMe(out) {
     out.x = mePrev.x + (me.x - mePrev.x) * alpha + err.x;
@@ -474,7 +476,7 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
       out.oy = tank ? tank.oy : arr[P.OY];
       out.ca = tank ? tank.ca : arr[P.CA];
       // Nachladen: 1 heißt bereit
-      const w = VEHICLES[out.vehicle].weapon;
+      const w = vehicleFor(out.vehicle, speedNow()).weapon;
       const cdSecs = w.kind === 'gun' ? (out.ammo <= 0 ? w.reload : w.interval) : w.cooldown || 0;
       const cdMax = Math.max(1, Math.round(cdSecs * TICK_RATE));
       const cd = tank ? tank.cd : arr[P.CD];

@@ -70,7 +70,7 @@ export function createBot(slot, seed) {
 
   // Trifft eine Rakete in diese Richtung? Liefert die Schritte bis zum Treffer.
   function trial(sim, me, angle, foes) {
-    const weapon = vehicleOf(me).weapon;
+    const weapon = vehicleOf(sim, me).weapon;
     const r = launchRocket(sim.arena, { x: me.tank.x, y: me.tank.y, a: angle }, weapon);
     const reach = TANK_R + ROCKET_R - 0.06;
     const limit = Math.min(r.life, 150);
@@ -95,7 +95,7 @@ export function createBot(slot, seed) {
     const offset = rng() * ((Math.PI * 2) / spread);
     for (let i = 0; i < spread; i += 1) tries.push(offset + (i / spread) * Math.PI * 2);
     let best = null;
-    const turretRate = vehicleOf(me).turret;
+    const turretRate = vehicleOf(sim, me).turret;
     for (const angle of tries) {
       const steps = trial(sim, me, angle, foes);
       if (!Number.isFinite(steps)) continue;
@@ -112,7 +112,7 @@ export function createBot(slot, seed) {
   function threat(sim, me) {
     for (const p of sim.players) {
       if (p === me || !alive(p) || p.tank.ch <= 0) continue;
-      const w = vehicleOf(p).weapon;
+      const w = vehicleOf(sim, p).weapon;
       const { x: cx, y: cy } = blastPoint(sim.arena, p.tank, p.tank.ch);
       if (Math.hypot(me.tank.x - cx, me.tank.y - cy) < w.radius + 1.2 && rng() < 0.9) {
         // weg von der Mitte des Kreises: wie eine Rakete, die quer dazu fliegt
@@ -173,7 +173,7 @@ export function createBot(slot, seed) {
     const t = sim.tick;
     const tank = me.tank;
     const arena = sim.arena;
-    const w = vehicleOf(me).weapon;
+    const w = vehicleOf(sim, me).weapon;
     const playing = sim.phase === PHASE.PLAY;
     const foes = sim.players.filter((p) => p !== me && alive(p));
     if (!foes.length) return packInput(0, -1, false);
@@ -194,7 +194,7 @@ export function createBot(slot, seed) {
       let bestD = Infinity;
       for (const p of foes) {
         // Wer mit Bomben aus der Ferne wirft, wird bevorzugt gejagt, wie es Menschen auch tun
-        const lobber = vehicleOf(p).weapon.kind === 'mortar' ? 4 : 0;
+        const lobber = vehicleOf(sim, p).weapon.kind === 'mortar' ? 4 : 0;
         const d = Math.hypot(p.tank.x - tank.x, p.tank.y - tank.y) + (p.shield > 0 ? 6 : 0) + rng() * 2 - lobber;
         if (d < bestD) {
           bestD = d;
