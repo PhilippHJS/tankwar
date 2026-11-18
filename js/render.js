@@ -222,6 +222,10 @@ export function createRenderer(canvas) {
   const particles = [];
   const scorches = [];
   const treads = [];
+  const rebirths = new Map(); // Spieler -> Flug des Geistes zum Startplatz
+  const badges = []; // Abschuss-Abzeichen über dem Schützen
+  const hitArcs = []; // rote Bögen am eigenen Panzer: woher der Treffer kam
+  let lastPhase = -1;
   const looks = new Map(); // Panzer -> Zustand nur fürs Zeichnen
   let shake = 0;
 
@@ -372,6 +376,7 @@ export function createRenderer(canvas) {
   // Ein Ereignis des Gastgebers oder ein eigener Schuss
   function effect(e, view, t) {
     const rand = Math.random;
+    noteHit(e, view);
     const color = (slot) => (COLORS[slot] || COLORS[0]).color;
     if (e.kind === FX.FIRE) {
       const p = view.players[e.by];
@@ -404,6 +409,8 @@ export function createRenderer(canvas) {
       return;
     }
     if (e.kind === EVENT.DESTROY) {
+      const shooter = view.players[e.by];
+      if (shooter && e.by !== e.of && shooter.in && shooter.lives > 0 && shooter.dead === 0) badges.push({ slot: e.by, t });
       spawn({ kind: 'flash', x: e.x, y: e.y, r: 1.4, life: 0.18, max: 0.18, color: '#fff0c0' });
       spawn({ kind: 'ring', x: e.x, y: e.y, r: 0.2, grow: 5, life: 0.45, max: 0.45, color: '#ffb347', width: 0.1 });
       burst(e.x, e.y, 18, () => {
@@ -489,14 +496,15 @@ export function createRenderer(canvas) {
       return;
     }
     if (e.kind === EVENT.REVIVE) {
+      // Der Geist leuchtet auf und fliegt dann schnell zum Startplatz
       const look = COLORS[e.of] || COLORS[0];
-      spawn({ kind: 'flash', x: e.x, y: e.y, r: 1.6, life: 0.3, max: 0.3, color: look.light });
-      spawn({ kind: 'ring', x: e.x, y: e.y, r: 0.3, grow: 6, life: 0.5, max: 0.5, color: look.color, width: 0.12 });
-      burst(e.x, e.y, 22, () => {
+      spawn({ kind: 'flash', x: e.x, y: e.y, r: 1.2, life: 0.25, max: 0.25, color: look.light });
+      burst(e.x, e.y, 12, () => {
         const th = rand() * TAU;
-        const v = 1.5 + rand() * 3;
-        return { kind: 'spark', x: e.x, y: e.y, vx: Math.cos(th) * v, vy: Math.sin(th) * v, life: 0.5, max: 0.5, color: rand() < 0.5 ? look.light : '#ffffff' };
+        const v = 1 + rand() * 2.5;
+        return { kind: 'spark', x: e.x, y: e.y, vx: Math.cos(th) * v, vy: Math.sin(th) * v, life: 0.4, max: 0.4, color: rand() < 0.5 ? look.light : '#ffffff' };
       });
+      rebirths.set(e.of, { fx: e.x, fy: e.y, tx: e.x2, ty: e.y2, start: t, dur: Math.max(200, ((e.item || 36) / 60) * 1000), trailAt: 0 });
       return;
     }
     if (e.kind === FX.THROW) {
@@ -508,6 +516,24 @@ export function createRenderer(canvas) {
       burst(e.x, e.y, 5, () => ({ kind: 'smoke', x: e.x, y: e.y, vx: (rand() - 0.5) * 1.4, vy: (rand() - 0.5) * 1.4, r: 0.07, grow: 0.6, life: 0.5, max: 0.5, color: '170,165,155' }));
       return;
     }
+    if (e.kind === EVENT.SPAWN && e.item === 1) {
+      // Wiedergeburt: Lichtsäule, Ring nach außen, der Panzer glüht weiß auf
+      const look = COLORS[e.of] || COLORS[0];
+      rebirths.delete(e.of);
+      lookOf(e.of).flashAt = t + 120;
+      lookOf(e.of).rebornAt = t;
+      spawn({ kind: 'beam', x: e.x, y: e.y, life: 0.9, max: 0.9, color: look.light });
+      spawn({ kind: 'flash', x: e.x, y: e.y, r: 2.2, life: 0.35, max: 0.35, color: '#ffffff' });
+      spawn({ kind: 'ring', x: e.x, y: e.y, r: 0.3, grow: 7, life: 0.55, max: 0.55, color: look.color, width: 0.14 });
+      spawn({ kind: 'ring', x: e.x, y: e.y, r: 0.2, grow: 4.5, life: 0.7, max: 0.7, color: '#ffffff', width: 0.06 });
+      burst(e.x, e.y, 26, () => {
+        const th = rand() * TAU;
+        const v = 1.5 + rand() * 3.5;
+        return { kind: 'spark', x: e.x, y: e.y, vx: Math.cos(th) * v, vy: Math.sin(th) * v, life: 0.6, max: 0.6, color: rand() < 0.5 ? look.light : '#ffffff' };
+      });
+      if (e.of === view.slot) shake = Math.max(shake, 0.18);
+      return;
+    }
     if (e.kind === EVENT.SPAWN) {
       spawn({ kind: 'ring', x: e.x, y: e.y, r: 1.4, grow: -3.6, life: 0.35, max: 0.35, color: color(e.of), width: 0.08 });
       burst(e.x, e.y, 14, () => {
@@ -515,6 +541,21 @@ export function createRenderer(canvas) {
         return { kind: 'spark', x: e.x + Math.cos(th) * 0.8, y: e.y + Math.sin(th) * 0.8, vx: -Math.cos(th) * 2, vy: -Math.sin(th) * 2, life: 0.35, max: 0.35, color: color(e.of) };
       });
     }
+  }
+
+  // Woher kam ein Treffer auf den eigenen Panzer?
+  function noteHit(e, view) {
+    const me = view.slot >= 0 ? view.players[view.slot] : null;
+    if (!me || !me.in || me.lives <= 0 || me.dead > 0) return;
+    let from = null;
+    if (e.kind === EVENT.HIT && e.of === view.slot) from = { x: e.x, y: e.y };
+    else if (e.kind === EVENT.ZAP && e.of === view.slot && e.item > 0) from = view.players[e.by];
+    else if ((e.kind === EVENT.BLAST || e.kind === EVENT.GBLAST) && Math.hypot(me.x - e.x, me.y - e.y) < (e.item || 120) / 100 + 0.3) from = { x: e.x, y: e.y };
+    if (!from) return;
+    const d = Math.hypot(from.x - me.x, from.y - me.y);
+    if (d < 0.05) return;
+    hitArcs.push({ angle: Math.atan2(from.y - me.y, from.x - me.x), t: performance.now() });
+    if (hitArcs.length > 6) hitArcs.shift();
   }
 
   function stepParticles(dt) {
@@ -534,6 +575,7 @@ export function createRenderer(canvas) {
       }
       if (p.grow) p.r = Math.max(0.01, p.r + p.grow * dt);
       if (p.spin) p.rot += p.spin * dt;
+      if (p.kind === 'confetti') p.vy += 1.2 * dt; // sinkt langsam nach unten
     }
   }
 
@@ -592,6 +634,32 @@ export function createRenderer(canvas) {
         ctx.globalAlpha = Math.min(1, k * 2);
         ctx.fillStyle = p.color;
         ctx.fillRect(-p.s * S, -p.s * S * 0.6, p.s * 2 * S, p.s * 1.2 * S);
+        ctx.restore();
+      } else if (p.kind === 'beam') {
+        // Lichtsäule von oben, wird schmaler und verblasst
+        const w = S * 0.9 * (0.4 + 0.6 * k);
+        const top = Math.max(oy, y - S * 6); // nicht über die Arena hinaus
+        const g = ctx.createLinearGradient(0, top, 0, y);
+        g.addColorStop(0, 'rgba(255,255,255,0)');
+        g.addColorStop(0.7, rgba(p.color, 0.45 * k));
+        g.addColorStop(1, `rgba(255,255,255,${0.85 * k})`);
+        ctx.fillStyle = g;
+        ctx.fillRect(x - w / 2, top, w, y - top);
+        const glow = ctx.createRadialGradient(x, y, 0, x, y, S * 1.1);
+        glow.addColorStop(0, `rgba(255,255,255,${0.6 * k})`);
+        glow.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.ellipse(x, y, S * 1.1, S * 0.6, 0, 0, TAU);
+        ctx.fill();
+      } else if (p.kind === 'confetti') {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(p.rot);
+        ctx.scale(1, Math.cos(p.rot * 1.7));
+        ctx.globalAlpha = Math.min(1, k * 2);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.s * S, -p.s * S * 0.5, p.s * 2 * S, p.s * S);
         ctx.restore();
       } else if (p.kind === 'tracer') {
         ctx.save();
@@ -735,12 +803,12 @@ export function createRenderer(canvas) {
   }
 
   // Geist auf dem Rand: halb durchsichtig, schwebt, schaut nach innen
-  function drawGhost(p, t) {
+  function drawGhost(p, t, scale = 1, bright = 0) {
     const look = COLORS[p.slot] || COLORS[0];
     const bob = Math.sin(t / 260 + p.slot * 1.7) * S * 0.05;
     const x = sx(p.gx);
     const y = sy(p.gy) + bob;
-    const r = S * 0.34;
+    const r = S * 0.34 * scale;
     ctx.save();
     ctx.translate(x, y);
     const glow = ctx.createRadialGradient(0, 0, r * 0.3, 0, 0, r * 1.7);
@@ -762,8 +830,12 @@ export function createRenderer(canvas) {
       ctx.quadraticCurveTo((x0 + x1) / 2 + shift, r * 0.45, x1, r * 0.8);
     }
     ctx.closePath();
-    ctx.fillStyle = rgba(look.light, 0.78);
+    ctx.fillStyle = rgba(look.light, 0.78 + 0.22 * bright);
     ctx.fill();
+    if (bright > 0) {
+      ctx.fillStyle = `rgba(255,255,255,${0.6 * bright})`;
+      ctx.fill();
+    }
     ctx.lineWidth = Math.max(1.5, S * 0.035);
     ctx.strokeStyle = rgba(look.deep, 0.85);
     ctx.stroke();
@@ -860,6 +932,137 @@ export function createRenderer(canvas) {
     ctx.arc(bx + size * 0.55, by - size * 0.75, Math.max(1.5, size * 0.28), 0, TAU);
     ctx.fill();
     ctx.restore();
+  }
+
+  // Der Geist auf dem Weg zum Startplatz, im Bogen, mit Funkenspur
+  function drawRebirths(view, t, dt) {
+    for (const [slot, r] of rebirths) {
+      const f = (t - r.start) / r.dur;
+      if (f >= 1.3) {
+        rebirths.delete(slot);
+        continue;
+      }
+      const k = Math.min(1, f);
+      const ease = k * k * (3 - 2 * k);
+      // Bogen zur Mitte der Arena hin, nicht über den Rand hinaus
+      const len0 = Math.hypot(r.tx - r.fx, r.ty - r.fy) || 1;
+      let px = -(r.ty - r.fy) / len0;
+      let py = (r.tx - r.fx) / len0;
+      const cx0 = view.arena.W / 2 - (r.fx + r.tx) / 2;
+      const cy0 = view.arena.H / 2 - (r.fy + r.ty) / 2;
+      if (px * cx0 + py * cy0 < 0) {
+        px = -px;
+        py = -py;
+      }
+      const mx = (r.fx + r.tx) / 2 + px * len0 * 0.25;
+      const my = (r.fy + r.ty) / 2 + py * len0 * 0.25;
+      const x = (1 - ease) * (1 - ease) * r.fx + 2 * (1 - ease) * ease * mx + ease * ease * r.tx;
+      const y = (1 - ease) * (1 - ease) * r.fy + 2 * (1 - ease) * ease * my + ease * ease * r.ty;
+      const look = COLORS[slot] || COLORS[0];
+      r.trailAt -= dt;
+      if (r.trailAt <= 0 && f < 1) {
+        r.trailAt = 0.012;
+        spawn({ kind: 'spark', x, y, vx: (Math.random() - 0.5) * 1.5, vy: (Math.random() - 0.5) * 1.5, life: 0.35, max: 0.35, color: Math.random() < 0.5 ? look.light : '#ffffff' });
+        spawn({ kind: 'glow', x, y, r: 0.22, life: 0.25, max: 0.25, color: rgba(look.light, 0.8) });
+      }
+      // Zum Ende hin schrumpft der Geist und wird heller
+      if (f < 1) {
+        const dx = r.tx - x;
+        const dy = r.ty - y;
+        const len = Math.hypot(dx, dy) || 1;
+        drawGhost({ slot, gx: x, gy: y, gnx: dx / len, gny: dy / len, mine: false }, t, 1 - 0.5 * ease, ease);
+      }
+      // Am Ziel glimmt schon ein Lichtfleck auf
+      if (f > 0.4) {
+        const a = Math.min(1, (f - 0.4) / 0.6);
+        const g = ctx.createRadialGradient(sx(r.tx), sy(r.ty), 0, sx(r.tx), sy(r.ty), S * 0.9);
+        g.addColorStop(0, rgba(look.light, 0.55 * a));
+        g.addColorStop(1, rgba(look.light, 0));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(sx(r.tx), sy(r.ty), S * 0.9, 0, TAU);
+        ctx.fill();
+      }
+    }
+  }
+
+  // Abschuss-Abzeichen: steigt über dem Schützen auf und verblasst
+  function drawBadges(view, t) {
+    for (let i = badges.length - 1; i >= 0; i -= 1) {
+      const b = badges[i];
+      const age = (t - b.t) / 1000;
+      if (age > 1.3) {
+        badges.splice(i, 1);
+        continue;
+      }
+      const p = view.players[b.slot];
+      if (!p || !p.in || p.dead > 0 || p.lives <= 0) continue;
+      const look = COLORS[b.slot] || COLORS[0];
+      const pop = age < 0.15 ? 0.6 + (age / 0.15) * 0.55 : age < 0.25 ? 1.15 - ((age - 0.15) / 0.1) * 0.15 : 1;
+      const fade = age > 0.9 ? 1 - (age - 0.9) / 0.4 : 1;
+      const x = sx(p.x);
+      const y = sy(p.y) - S * (1.35 + age * 0.35);
+      const r = S * 0.24 * pop;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, fade);
+      ctx.fillStyle = look.color;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, TAU);
+      ctx.fill();
+      ctx.lineWidth = Math.max(1.5, S * 0.04);
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+      // Fadenkreuz
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = Math.max(1.2, S * 0.03);
+      ctx.beginPath();
+      ctx.arc(x, y, r * 0.5, 0, TAU);
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        ctx.moveTo(x + dx * r * 0.25, y + dy * r * 0.25);
+        ctx.lineTo(x + dx * r * 0.78, y + dy * r * 0.78);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // Rote Bögen am eigenen Panzer aus der Richtung der Treffer
+  function drawHitArcs(me) {
+    const now = performance.now();
+    for (let i = hitArcs.length - 1; i >= 0; i -= 1) {
+      const age = (now - hitArcs[i].t) / 1000;
+      if (age > 0.7) {
+        hitArcs.splice(i, 1);
+        continue;
+      }
+      if (!me) continue;
+      const k = 1 - age / 0.7;
+      const a = hitArcs[i].angle;
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = `rgba(255,70,55,${0.85 * k})`;
+      ctx.lineWidth = Math.max(3, S * 0.11);
+      ctx.beginPath();
+      ctx.arc(sx(me.x), sy(me.y), S * (0.66 + age * 0.15), a - 0.55, a + 0.55);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  function confetti(view, slot) {
+    const p = view.players[slot];
+    if (!p || !p.in) return;
+    const look = COLORS[slot] || COLORS[0];
+    const colors = [look.color, look.light, '#ffffff', '#ffc83a'];
+    burst(p.x, p.y, 48, (i) => {
+      const th = Math.random() * TAU;
+      const v = 2 + Math.random() * 4;
+      return {
+        kind: 'confetti', x: p.x, y: p.y, vx: Math.cos(th) * v, vy: Math.sin(th) * v - 1.5,
+        rot: Math.random() * TAU, spin: (Math.random() - 0.5) * 14, s: 0.05 + Math.random() * 0.04,
+        life: 1.4 + Math.random() * 0.6, max: 2, color: colors[i % colors.length],
+      };
+    });
   }
 
   function drawRocket(r, t) {
@@ -1103,6 +1306,7 @@ export function createRenderer(canvas) {
       // Wracks unter den fahrenden Panzern
       for (const p of view.players) {
         if (!p.in || (p.dead === 0 && p.lives > 0)) continue;
+        if (rebirths.has(p.slot)) continue; // der Geist fliegt gerade zurück
         const look = lookOf(p.slot);
         ctx.save();
         ctx.translate(sx(p.x), sy(p.y));
@@ -1161,6 +1365,18 @@ export function createRenderer(canvas) {
         ctx.globalAlpha = blink;
         drawTankShape(ctx, COLORS[p.slot], p.a - p.h, { tread: look.tread, recoil, flash, kind: kindOf(p) });
         ctx.restore();
+        // frisch wiedergeboren: ein heller Schein, der langsam vergeht
+        const sinceReborn = (t - (look.rebornAt || -1e9)) / 1000;
+        if (sinceReborn < 1.2) {
+          const k = 1 - sinceReborn / 1.2;
+          const g = ctx.createRadialGradient(x, y, S * 0.2, x, y, S * 1.1);
+          g.addColorStop(0, rgba(COLORS[p.slot].light, 0.45 * k));
+          g.addColorStop(1, rgba(COLORS[p.slot].light, 0));
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(x, y, S * 1.1, 0, TAU);
+          ctx.fill();
+        }
       }
     }
 
@@ -1180,6 +1396,7 @@ export function createRenderer(canvas) {
         if (p.mine) drawGhostAim(p);
         drawGhost(p, t);
       }
+      drawRebirths(view, t, dt);
     }
 
     if (shown) {
@@ -1192,7 +1409,38 @@ export function createRenderer(canvas) {
         if (p.in && p.dead === 0 && p.lives > 0) drawCharge(p, t);
       }
       const me = view.slot >= 0 ? view.players[view.slot] : null;
-      if (opts.aim && me && me.in && me.dead === 0 && me.lives > 0 && (view.phase === PHASE.PLAY || view.phase === PHASE.COUNTDOWN)) drawAim(me, view);
+      const meLive = me && me.in && me.dead === 0 && me.lives > 0;
+      if (opts.aim && meLive && (view.phase === PHASE.PLAY || view.phase === PHASE.COUNTDOWN)) drawAim(me, view);
+      // Eigener Panzer fast kaputt: er qualmt
+      if (opts.tags && meLive && me.maxHp && me.hp / me.maxHp < 0.3) {
+        const look = lookOf(me.slot);
+        look.lowAt = (look.lowAt || 0) - dt;
+        if (look.lowAt <= 0) {
+          look.lowAt = 0.11;
+          spawn({ kind: 'smoke', x: me.x + (Math.random() - 0.5) * 0.3, y: me.y + (Math.random() - 0.5) * 0.3, vx: (Math.random() - 0.5) * 0.3, vy: -0.4, r: 0.09, grow: 0.45, life: 0.9, max: 0.9, color: '50,48,46' });
+          if (Math.random() < 0.15) spawn({ kind: 'spark', x: me.x, y: me.y, vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3, life: 0.2, max: 0.2, color: '#ffb347' });
+        }
+      }
+      // Rundenende: Konfetti für die Sieger, ihr Panzer glüht
+      if (view.phase === PHASE.RESULT && lastPhase === PHASE.PLAY) for (const slot of view.winners) confetti(view, slot);
+      if (view.phase === PHASE.RESULT) {
+        for (const slot of view.winners) {
+          const p = view.players[slot];
+          if (!p || !p.in || p.dead > 0 || p.lives <= 0) continue;
+          const pulse = 0.5 + 0.5 * Math.sin(t / 150);
+          ctx.save();
+          ctx.strokeStyle = rgba(COLORS[slot].light, 0.4 + 0.4 * pulse);
+          ctx.lineWidth = Math.max(2, S * 0.07);
+          ctx.beginPath();
+          ctx.arc(sx(p.x), sy(p.y), S * (0.62 + 0.08 * pulse), 0, TAU);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+      if (opts.tags) {
+        drawHitArcs(meLive ? me : null);
+        drawBadges(view, t);
+      }
       if (opts.tags) {
         for (const p of view.players) {
           if (!p.in || p.dead > 0 || p.lives <= 0) continue;
@@ -1201,6 +1449,7 @@ export function createRenderer(canvas) {
       }
     }
     ctx.restore();
+    lastPhase = view.phase;
   }
 
   function toWorld(px, py) {
@@ -1212,6 +1461,9 @@ export function createRenderer(canvas) {
     scorches.length = 0;
     treads.length = 0;
     looks.clear();
+    rebirths.clear();
+    badges.length = 0;
+    hitArcs.length = 0;
   }
 
   resize();

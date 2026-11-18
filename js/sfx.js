@@ -19,7 +19,7 @@ export function createSfx({ muted = false } = {}) {
   const ctx = audioContext();
   let off = muted;
   const silent = {
-    effect() {}, frame() {}, count() {}, result() {},
+    effect() {}, frame() {}, count() {}, result() {}, tick() {},
     toggle() { off = !off; return off; }, muted: () => off,
   };
   if (!ctx) return silent;
@@ -140,6 +140,19 @@ export function createSfx({ muted = false } = {}) {
       tone({ type: 'triangle', f: 260, to: 620, dur: 0.18, vol: 0.06 });
       hiss({ dur: 0.16, vol: 0.05, filter: 'bandpass', f: 900, to: 2200, q: 1.5 });
     },
+    shimmer(k, dur) {
+      // Flug des Geistes: ein heller Ton, der nach oben gleitet
+      tone({ type: 'sine', f: 320, to: 1280, dur, vol: 0.06 * k, attack: 0.05 });
+      hiss({ dur, vol: 0.03 * k, filter: 'bandpass', f: 2500, to: 6000, q: 2, attack: 0.05 });
+    },
+    confirm() {
+      // nur für den Schützen: kurzes, helles Bestätigen
+      tone({ type: 'triangle', f: 880, dur: 0.09, vol: 0.075 });
+      tone({ type: 'triangle', f: 1320, dur: 0.14, vol: 0.07, delay: 0.07 });
+    },
+    tick(high) {
+      tone({ type: 'sine', f: high ? 1250 : 1000, dur: 0.045, vol: high ? 0.06 : 0.04 });
+    },
     rise(k) {
       [392, 523, 659, 784].forEach((f, i) => tone({ type: 'triangle', f, dur: 0.18, vol: 0.08 * k, delay: i * 0.07 }));
     },
@@ -171,6 +184,7 @@ export function createSfx({ muted = false } = {}) {
         break;
       case EVENT.DESTROY:
         sounds.boom(e.of === view.slot ? 1 : near, pan, true);
+        if (mine && e.of !== view.slot) sounds.confirm();
         break;
       case EVENT.HIT:
         if (once(`hit${e.of}`, 0.06)) sounds.clank(e.of === view.slot ? 1.2 : near, pan);
@@ -185,7 +199,7 @@ export function createSfx({ muted = false } = {}) {
         if (once('gblast', 0.05)) sounds.pop(near, pan);
         break;
       case EVENT.REVIVE:
-        sounds.rise(e.of === view.slot ? 1.3 : 0.7);
+        sounds.shimmer(e.of === view.slot ? 1.3 : 0.7, ((e.item || 36) / 60) * 0.95);
         break;
       case FX.THROW:
         sounds.whoosh();
@@ -194,7 +208,8 @@ export function createSfx({ muted = false } = {}) {
         if (once('pop', 0.12)) sounds.puff(near, pan);
         break;
       case EVENT.SPAWN:
-        sounds.chime(e.of === view.slot ? 1 : near * 0.7, pan);
+        if (e.item === 1) sounds.rise(e.of === view.slot ? 1.3 : 0.8); // Wiedergeburt
+        else sounds.chime(e.of === view.slot ? 1 : near * 0.7, pan);
         break;
       default:
     }
@@ -296,11 +311,17 @@ export function createSfx({ muted = false } = {}) {
     notes.forEach((f, i) => tone({ type: 'triangle', f, dur: final && i === notes.length - 1 ? 0.7 : 0.22, vol: 0.09, delay: i * 0.12 }));
   }
 
+  // Die letzten Sekunden einer Runde
+  function tick(high) {
+    if (ready()) sounds.tick(high);
+  }
+
   return {
     effect,
     frame,
     count,
     result,
+    tick,
     toggle() {
       off = !off;
       master.gain.setTargetAtTime(off ? 0 : VOLUME, ctx.currentTime, 0.05);

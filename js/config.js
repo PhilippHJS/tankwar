@@ -3,7 +3,7 @@
 
 export const TICK_RATE = 60;
 export const DT = 1 / TICK_RATE;
-export const PROTOCOL = 5;
+export const PROTOCOL = 6;
 
 // Plätze im Raum. Alles ist auf eine beliebige Zahl ausgelegt, für mehr
 // Spieler braucht es nur mehr Farben (siehe COLORS) und Arenen mit genug
@@ -190,6 +190,7 @@ export const GHOST = {
   damage: 14, // in der Mitte, recht schwach
   edge: 6,
   revive: 0.3, // so viel Lebensleiste nach der Rückkehr
+  rebirth: 0.6, // so lange fliegt der Geist zum Startplatz, dann erscheint der Panzer
 };
 
 // Geister im eingestellten Tempo, wie die Fahrzeuge

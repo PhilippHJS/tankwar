@@ -46,7 +46,7 @@ export function createSim(count = MAX_PLAYERS) {
     // ghost: als Geist auf dem Rand (siehe GHOST); gone: ist gegangen, kein Geist
     players: Array.from({ length: count }, (_, slot) => ({
       slot, in: false, vehicle: 0, tank: newTank(0, 0, 0), hp: 0, lives: 0, dead: 0, shield: 0, outAt: 0,
-      points: 0, kills: 0, tp: 0, ghost: newGhost(), gone: false,
+      points: 0, kills: 0, tp: 0, ghost: newGhost(), gone: false, spawnAt: null, reborn: false,
     })),
     rockets: [], // { id, owner, seq, x, y, vx, vy, life, b }
     bombs: [], // Geisterbomben { id, owner, sx, sy, tx, ty, k0, land, boom }
@@ -118,6 +118,8 @@ export function nextRound(sim, lineup) {
     p.outAt = 0;
     p.ghost = newGhost();
     p.gone = false;
+    p.spawnAt = null;
+    p.reborn = false;
     if (!p.in) {
       p.lives = 0;
       p.hp = 0;
@@ -174,14 +176,18 @@ function freeSpawn(sim, me) {
 }
 
 function respawn(sim, p) {
-  const spawn = freeSpawn(sim, p);
+  // Nach einer Wiedergeburt steht der Startplatz schon fest: Dorthin ist der Geist geflogen.
+  const spawn = p.spawnAt || freeSpawn(sim, p);
+  const reborn = p.reborn;
+  p.spawnAt = null;
+  p.reborn = false;
   const turret = p.tank.a;
   p.tank = newTank(spawn.x, spawn.y, spawn.h, vehicleOf(sim, p));
   p.tank.a = turret;
-  p.hp = vehicleOf(sim, p).health;
+  p.hp = reborn ? Math.max(1, Math.round(vehicleOf(sim, p).health * GHOST.revive)) : vehicleOf(sim, p).health;
   p.shield = SHIELD_TICKS;
   p.tp += 1;
-  addEvent(sim, EVENT.SPAWN, p.slot, p.slot, spawn.x, spawn.y);
+  addEvent(sim, EVENT.SPAWN, p.slot, p.slot, spawn.x, spawn.y, reborn ? 1 : 0);
 }
 
 // Schaden an einem Panzer. Schutz hält alles ab. `quiet`: keine eigene
@@ -211,15 +217,21 @@ function hurt(sim, p, dmg, by, x, y, quiet = false, ghost = false) {
 }
 
 // Ein Geist hat einem Gegner den Rest gegeben: zurück mit einem Leben und
-// einem Teil der Lebensleiste, an einem freien Startplatz, kurz geschützt
+// einem Teil der Lebensleiste, an einem freien Startplatz, kurz geschützt.
+// Erst fliegt der Geist dorthin, bei seiner Ankunft erscheint der Panzer.
+// Das Ereignis trägt den Weg: von x, y (Rand) nach x2, y2 (Startplatz).
 function revive(sim, p) {
+  const from = rimPoint(sim.arena, p.ghost.s);
+  const spawn = freeSpawn(sim, p);
+  const flight = Math.round(GHOST.rebirth * TICK_RATE);
   p.lives = 1;
   p.outAt = 0;
-  p.dead = 0;
   p.ghost = newGhost();
-  respawn(sim, p);
-  p.hp = Math.max(1, Math.round(vehicleOf(sim, p).health * GHOST.revive));
-  addEvent(sim, EVENT.REVIVE, p.slot, p.slot, p.tank.x, p.tank.y);
+  p.hp = 0;
+  p.dead = flight;
+  p.spawnAt = spawn;
+  p.reborn = true;
+  addEvent(sim, EVENT.REVIVE, p.slot, p.slot, from.x, from.y, flight, spawn.x, spawn.y);
 }
 
 function throwBomb(sim, p, dist) {

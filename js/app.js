@@ -522,7 +522,9 @@ function tickFeed(t) {
 }
 
 let lastKiller = -1;
+let rebornUntil = 0;
 function hudEvent(e, view) {
+  if (e.kind === EVENT.REVIVE && e.of === view.slot) rebornUntil = now() + 1500;
   if (e.kind === EVENT.REVIVE) {
     const p = view.players[e.of];
     if (p) addFeed(e.of === view.slot ? 'Du bist als Geist zurück!' : `${colored(p.slot, p.name, false)} ist als Geist zurück!`);
@@ -570,6 +572,10 @@ function updateHud(view, t) {
 
   const counting = view.phase === PHASE.COUNTDOWN;
   const secs = counting ? rulesFor(view.levels).seconds : view.phase === PHASE.PLAY ? secsOf(view.ticksLeft) : 0;
+  // Letzte zehn Sekunden: leises Ticken, die letzten drei etwas höher
+  put('tick', view.phase === PHASE.PLAY && secs <= 10 && secs > 0 ? secs : 0, (v) => {
+    if (v) sfx.tick(v <= 3);
+  });
   put('timer', `${clockText(secs)}|${view.phase === PHASE.PLAY && secs <= 10}`, (v) => {
     const [text, soon] = v.split('|');
     $('#timer').textContent = text;
@@ -610,6 +616,7 @@ function updateHud(view, t) {
     if (!me || !me.in) down = 'Du schaust zu und steigst in der nächsten Runde ein.';
     else if (me.ghost) down = 'Du bist ein Geist. Fahr am Rand entlang, halte die Leertaste und lass los, um eine Bombe zu werfen.<small>Gibst du damit einem Gegner den Rest, kehrst du mit einem Leben zurück.</small>';
     else if (me.lives <= 0) down = 'Alle Leben verloren.';
+    else if (me.dead > 0 && now() < rebornUntil) down = 'Du kehrst zurück!';
     else if (me.dead > 0) {
       const killer = view.players[lastKiller];
       const by = killer && lastKiller !== view.slot ? ` von ${colored(killer.slot, killer.name, false)}` : '';

@@ -84,6 +84,14 @@ Eigene Schüsse gehen sofort los: Raketen fliegen, die Pistole zieht ihre Spur, 
 
 Wie bei Hatz: Die Geräte finden sich über vier öffentliche, kostenlose MQTT-Vermittler und bauen dann eine direkte Leitung (WebRTC) auf. Klappt das nicht, läuft das Spiel über die Vermittler weiter, nur etwas träger. Dort ist alles verschlüsselt (AES-GCM), Schlüssel und Kanalname entstehen aus dem Raumcode.
 
+## Kleine Extras
+
+- **Wiedergeburt:** Kehrt ein Geist zurück, leuchtet er auf und fliegt mit einer Funkenspur zum Startplatz. Dort erscheint der Panzer in einer Lichtsäule, sobald der Geist ankommt, etwa eine halbe Sekunde später.
+- **Abschuss:** Wer als Panzer jemanden erwischt, bekommt kurz ein Abzeichen über dem Panzer, und nur er hört einen hellen Bestätigungston.
+- **Trefferrichtung:** Wird der eigene Panzer getroffen, leuchtet kurz ein roter Bogen aus der Richtung des Treffers.
+- **Rauch:** Unter 30 % Lebensleiste qualmt der eigene Panzer.
+- **Rundenende:** Konfetti in der Farbe der Sieger, ihr Panzer glüht, solange das Ergebnis steht. In den letzten 10 Sekunden einer Runde tickt es leise.
+
 ## Geräusche
 
 Alle Geräusche entstehen im Browser, ohne Dateien, und sind bewusst sparsam: Schüsse, Treffer, Treffer auf den Schutz, Explosionen, Blitze, verpuffende Raketen, Wiedereinstieg, der Countdown und ein kurzes Signal am Rundenende. Für den eigenen Panzer kommen ein Summen beim Aufladen der Bombe, ein Knistern beim Blitzen und ein leises Klicken dazu, wenn wieder nachgeladen ist. Was weiter weg passiert, ist leiser und kommt etwas mehr von links oder rechts. Unten rechts im Spiel lassen sie sich abschalten, der Browser merkt sich das.

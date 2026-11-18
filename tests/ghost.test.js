@@ -97,11 +97,19 @@ test('gibt der Geist einem Gegner den Rest, kehrt er mit einem Leben und 30 % zu
   while (sim.bombs.length) step(0, 1);
   assert.equal(sim.players[1].lives, LIVES - 1, 'Gegner verliert ein Leben');
   assert.equal(me.lives, 1);
+  assert.equal(ghostActive(sim, me), false);
+  const revive = events(sim, EVENT.REVIVE)[0];
+  assert.ok(revive, 'Wiedergeburt gemeldet');
+  assert.equal(revive.y, 0.5, 'fliegt vom Rand los');
+  assert.equal(me.kills, 1);
+  // Erst fliegt der Geist zum Startplatz, dann erscheint der Panzer dort
+  assert.ok(me.dead > 0, 'noch unterwegs');
+  while (me.dead > 0) step(0, 1);
   assert.equal(me.hp, Math.round(VEHICLES[0].health * GHOST.revive));
   assert.ok(me.shield > 0, 'kurz geschützt');
-  assert.equal(ghostActive(sim, me), false);
-  assert.equal(events(sim, EVENT.REVIVE).length, 1);
-  assert.equal(me.kills, 1);
+  assert.ok(Math.abs(me.tank.x - revive.x2) < 1e-9 && Math.abs(me.tank.y - revive.y2) < 1e-9, 'dort, wohin der Geist geflogen ist');
+  const spawn = events(sim, EVENT.SPAWN).find((e) => e.of === 0);
+  assert.equal(spawn.item, 1, 'als Wiedergeburt erkennbar');
 });
 
 test('Raketen eines schon ausgeschiedenen Panzers holen ihn nicht zurück, wer geht, wird kein Geist', () => {
