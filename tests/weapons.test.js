@@ -151,8 +151,11 @@ test('Bombe: Startpunkt und Richtung gelten ab dem Dr√ºcken, Fahren und Pfeile √
   const up = aimIndex(-Math.PI / 2);
   const hold = Math.round((4 / w.charge) * TICK_RATE);
   step(packInput(down, up, true), hold);
-  assert.ok(Math.abs(me.tank.a) < 0.01, 'Turm bleibt beim Aufladen stehen');
   assert.ok(me.tank.y > 2.2, `Panzer ist trotzdem gefahren (${me.tank.y.toFixed(2)})`);
+  const c = { x: me.tank.ox + Math.cos(me.tank.ca) * me.tank.ch, y: me.tank.oy + Math.sin(me.tank.ca) * me.tank.ch };
+  const toCircle = Math.atan2(c.y - me.tank.y, c.x - me.tank.x);
+  assert.ok(Math.abs(me.tank.a - toCircle) < 0.01, 'Turm zeigt auf den Zielkreis, nicht dorthin, wohin der Pfeil will');
+  assert.ok(me.tank.a < 0 && me.tank.a > -0.6, `leicht nach oben, weil der Panzer nach unten gefahren ist (${me.tank.a.toFixed(2)})`);
   step(packInput(down, up, false), 1);
   const blast = sim.events.find((e) => e.kind === EVENT.BLAST);
   assert.ok(Math.abs(blast.y - 1.6) < 0.01, 'Zielkreis bleibt auf der Linie vom Startpunkt');

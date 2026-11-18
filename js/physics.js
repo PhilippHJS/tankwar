@@ -134,7 +134,7 @@ export const MODE = { AIM: 0, PLAY: 1, CRUISE: 2 };
 // Ein Schritt. `others`: andere Panzer, an denen dieser anstößt.
 // Gibt zurück, ob in diesem Schritt geschossen wurde.
 export function stepTank(arena, tank, code, vehicle, mode, others = []) {
-  // Lädt der Böller auf, ist der Turm festgestellt
+  // Lädt der Böller auf, lässt sich der Turm nicht drehen (siehe unten)
   const aim = inputAim(code);
   if (aim >= 0 && !(tank.ch > 0)) tank.a = turnToward(tank.a, aimAngle(aim), vehicle.turret * DT);
 
@@ -178,7 +178,14 @@ export function stepTank(arena, tank, code, vehicle, mode, others = []) {
     pushOutOfWalls(arena, tank, TANK_R);
   }
 
-  return useWeapon(arena, tank, vehicle.weapon, mode === MODE.PLAY, inputFire(code));
+  const shot = useWeapon(arena, tank, vehicle.weapon, mode === MODE.PLAY, inputFire(code));
+  // Beim Aufladen zeigt der Turm von selbst immer auf den Zielkreis, auch
+  // wenn der Panzer dabei fährt
+  if (tank.ch > 0) {
+    const c = blastPoint(arena, tank, tank.ch);
+    if (Math.hypot(c.x - tank.x, c.y - tank.y) > 0.05) tank.a = Math.atan2(c.y - tank.y, c.x - tank.x);
+  }
+  return shot;
 }
 
 const ticks = (seconds) => Math.round(seconds * TICK_RATE);

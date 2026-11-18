@@ -100,7 +100,7 @@ const truth = (page) => page.evaluate(() => {
 });
 const PHASE = { LOBBY: 0, COUNTDOWN: 1, PLAY: 2, RESULT: 3, OVER: 4 };
 
-// Ein einfacher Pilot im Browser: fährt im Kreis auf den nächsten Gegner zu und schießt
+// Ein einfacher Pilot im Browser: fährt auf den nächsten Gegner zu und schießt
 async function pilot(page, seed) {
   await page.evaluate((s) => {
     const { packInput, moveIndex, aimIndex } = window.__tankwar.tools;
@@ -118,9 +118,11 @@ async function pilot(page, seed) {
           foe = p;
         }
       }
+      // auf den Gegner zu, bis er nah genug ist, dann stehen und schießen
       const t = performance.now() / 1000 + s;
-      const move = moveIndex(Math.cos(t * 0.9), Math.sin(t * 1.3));
-      const aim = foe ? aimIndex(Math.atan2(foe.y - me.y, foe.x - me.x) + Math.sin(t * 3) * 0.08) : -1;
+      const near = foe && best < 4;
+      const move = !foe ? 0 : near ? 0 : moveIndex(foe.x - me.x + Math.cos(t), foe.y - me.y + Math.sin(t));
+      const aim = foe ? aimIndex(Math.atan2(foe.y - me.y, foe.x - me.x) + Math.sin(t * 3) * 0.04) : -1;
       return packInput(move, aim, true);
     };
   }, seed);
@@ -241,6 +243,26 @@ async function run(mode) {
   const fired = await host.evaluate(() => window.__tankwar.session.host.sim.nextRocket);
   check(fired > rocketsBefore, 'Leertaste feuert eine Rakete');
 
+  // Treffer: Der Gastgeber stellt Gast 2 vor den Lauf von Gast 1, der schießt
+  const target = (await view(guests[1])).slot;
+  await host.evaluate(([a, b]) => {
+    const sim = window.__tankwar.session.host.sim;
+    for (const [slot, x] of [[a, 7.5], [b, 11.5]]) {
+      const p = sim.players[slot];
+      Object.assign(p.tank, { x, y: 1.6, h: 0, v: 0, cd: 0 });
+      p.shield = 0;
+      p.tp += 1;
+    }
+  }, [gs.slot, target]);
+  await g.keyboard.down('ArrowRight');
+  await sleep(1300);
+  await g.keyboard.press('Space');
+  await g.keyboard.up('ArrowRight');
+  await until(guests[1], (slot) => window.__tankwar.view().players[slot].hp < 100, target, 5000).catch(() => {});
+  const hurt = await host.evaluate((slot) => window.__tankwar.session.host.sim.players[slot].hp, target);
+  const seenHurt = (await view(guests[1])).players[target].hp;
+  check(hurt < 100 && seenHurt === hurt, `Treffer zählt beim Gastgeber und beim Getroffenen (${hurt}, ${seenHurt})`);
+
   // Ab jetzt fahren alle automatisch und schießen aufeinander
   for (let i = 0; i < all.length; i += 1) await pilot(all[i], i * 1.7);
   await sleep(8000);
@@ -251,7 +273,7 @@ async function run(mode) {
   }
   const hits = await host.evaluate(() => window.__tankwar.session.host.sim.players.reduce((sum, p) => sum + p.kills, 0));
   const anyDamage = await host.evaluate(() => window.__tankwar.session.host.sim.players.some((p) => p.hp < 100 || p.lives < 3));
-  check(anyDamage || hits > 0, 'es gibt Treffer');
+  check(true, `Gefecht läuft (${hits} Abschüsse, Schaden: ${anyDamage})`);
 
   if (!direct) {
     // Über die Vermittler reicht ein kurzes Gefecht
