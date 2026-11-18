@@ -40,7 +40,7 @@ const myVehicle = () => cleanVehicle(Number(load(localStorage, 'tankwar-vehicle'
 
 const canvas = $('#stage');
 const renderer = createRenderer(canvas);
-const controls = createControls(window, canvas);
+const controls = createControls(window);
 
 let session = null; // { role, code, host, client, net, status, since }
 let invite = cleanCode(params.get('raum'));
@@ -192,7 +192,7 @@ function showStartMode() {
   $('#join').hidden = invited;
   $('#b-own').hidden = !invited;
   const touchOnly = typeof matchMedia === 'function' && matchMedia('(hover: none) and (pointer: coarse)').matches;
-  $('#start-note').textContent = touchOnly ? 'Gespielt wird mit Tastatur und Maus oder mit einem Gamepad. Am Handy geht es noch nicht.' : '';
+  $('#start-note').textContent = touchOnly ? 'Gespielt wird mit der Tastatur oder einem Gamepad. Am Handy geht es noch nicht.' : '';
   $('#start-note').classList.remove('bad');
 }
 
@@ -525,7 +525,7 @@ function updateHud(view, t) {
   if (view.phase !== PHASE.PLAY) playSince = 0;
   const pad = controls.usesPad();
   put('hint-text', pad, (v) => {
-    $('#hint').textContent = v ? 'Linker Stick fährt, rechter zielt, A oder Schultertaste schießt' : 'WASD fährt, die Maus zielt, Klick oder Leertaste schießt';
+    $('#hint').textContent = v ? 'Linker Stick fährt, rechter zielt, A oder Schultertaste schießt' : 'WASD fährt, die Pfeiltasten zielen, die Leertaste schießt';
   });
   put('hint', controls.hasMoved() && playSince && t - playSince > 8000, (gone) => {
     $('#hint').classList.toggle('gone', gone);
@@ -606,19 +606,8 @@ function updateHud(view, t) {
 function inputCode() {
   const c = controls.read();
   if (!session) return 0;
-  const client = session.client;
   const move = Math.abs(c.mx) + Math.abs(c.my) > 0.2 ? moveIndex(c.mx, c.my) : 0;
-  let aim = -1;
-  const shownTank = client.myTank();
-  const predicted = client.predicted();
-  if (c.mode === 'pad' && c.padAim !== null) aim = aimIndex(c.padAim);
-  else if (c.mode === 'keys') {
-    if (c.turn && predicted) aim = aimIndex(predicted.a + c.turn * 0.5);
-  } else if (c.pointer && shownTank) {
-    const w = renderer.toWorld(c.pointer.x, c.pointer.y);
-    if (Math.hypot(w.x - shownTank.x, w.y - shownTank.y) > 0.05) aim = aimIndex(Math.atan2(w.y - shownTank.y, w.x - shownTank.x));
-  }
-  return packInput(move, aim, c.fire);
+  return packInput(move, c.aim === null ? -1 : aimIndex(c.aim), c.fire);
 }
 
 // ---------- Takt ----------
@@ -688,9 +677,6 @@ function drawFrame(t) {
       shown.result = undefined;
     }
   });
-  put('aim', controls.mode(), (v) => {
-    document.body.dataset.aim = v;
-  });
 
   if (screen === 'game') {
     renderer.setInsets({ top: 74, right: 12, bottom: 34, left: 12 });
@@ -710,12 +696,7 @@ function drawFrame(t) {
       if (screen === 'game') hudEvent(e, view);
     }
     tickFeed(t);
-    renderer.draw(view, t, {
-      tags: true,
-      aim: screen === 'game',
-      crosshair: screen === 'game' && controls.mode() === 'mouse',
-      pointer: lastPointer,
-    });
+    renderer.draw(view, t, { tags: true, aim: screen === 'game' });
   } else {
     demo.client.frame(t);
     const demoView = demo.client.view(t);
@@ -724,10 +705,6 @@ function drawFrame(t) {
   }
 }
 
-let lastPointer = null;
-window.addEventListener('pointermove', (event) => {
-  if (event.pointerType === 'mouse') lastPointer = { x: event.clientX, y: event.clientY };
-});
 window.addEventListener('resize', () => renderer.resize());
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => renderer.resize());
 

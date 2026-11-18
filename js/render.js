@@ -532,6 +532,19 @@ export function createRenderer(canvas) {
       roundRect(ctx, left, top, w * frac, h, 2);
       ctx.fill();
     }
+    // Nachladen, nur beim eigenen Panzer: füllt sich, gelb heißt bereit
+    if (p.mine) {
+      const rh = Math.max(3, 0.06 * S);
+      const rt = top + h + 3;
+      ctx.fillStyle = 'rgba(20,22,28,0.7)';
+      roundRect(ctx, left - 1, rt - 1, w + 2, rh + 2, 2);
+      ctx.fill();
+      ctx.fillStyle = p.reload >= 1 ? '#ffc83a' : 'rgba(235,230,215,0.75)';
+      if (p.reload > 0) {
+        roundRect(ctx, left, rt, w * Math.min(1, p.reload), rh, 1.5);
+        ctx.fill();
+      }
+    }
     // Leben als Punkte
     const dot = Math.max(2, 0.055 * S);
     for (let i = 0; i < LIVES; i += 1) {
@@ -589,32 +602,6 @@ export function createRenderer(canvas) {
       ctx.lineTo(sx(points[i + 1].x), sy(points[i + 1].y));
       ctx.stroke();
     }
-    ctx.restore();
-  }
-
-  function drawCrosshair(x, y, color) {
-    const r = 11;
-    ctx.save();
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = 'rgba(15,15,20,0.55)';
-    const path = () => {
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, TAU);
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        ctx.moveTo(x + dx * (r - 4), y + dy * (r - 4));
-        ctx.lineTo(x + dx * (r + 6), y + dy * (r + 6));
-      }
-    };
-    path();
-    ctx.stroke();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = color;
-    path();
-    ctx.stroke();
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(x, y, 1.8, 0, TAU);
-    ctx.fill();
     ctx.restore();
   }
 
@@ -769,11 +756,6 @@ export function createRenderer(canvas) {
       }
     }
     ctx.restore();
-
-    if (opts.pointer && opts.crosshair) {
-      const me = view.players[view.slot];
-      drawCrosshair(opts.pointer.x, opts.pointer.y, me ? COLORS[me.slot].light : '#ffffff');
-    }
   }
 
   function toWorld(px, py) {

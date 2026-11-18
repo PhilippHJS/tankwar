@@ -193,7 +193,6 @@ async function run(mode) {
   const g = guests[0];
   const gs = await view(g);
   const towardMiddle = gs.players[gs.slot].x < 11 ? 'KeyD' : 'KeyA';
-  await g.mouse.move(683, 384);
   await g.keyboard.down(towardMiddle);
   await sleep(1400);
   await g.keyboard.up(towardMiddle);
@@ -205,19 +204,32 @@ async function run(mode) {
   const off = Math.hypot(seen.players[gs.slot].x - after.players[gs.slot].x, seen.players[gs.slot].y - after.players[gs.slot].y);
   check(off < 0.05, `eigener Panzer stimmt mit dem Gastgeber überein (${off.toFixed(3)})`);
 
-  // Schießen: Klick feuert eine Rakete, die beim Gastgeber ankommt
+  // Zielen mit den Pfeiltasten: zwei zugleich zielen schräg dazwischen, der Turm bleibt dort
+  await g.keyboard.down('ArrowUp');
+  await g.keyboard.down('ArrowRight');
+  await sleep(1300);
+  await g.keyboard.up('ArrowUp');
+  await g.keyboard.up('ArrowRight');
+  await sleep(direct ? 400 : 900);
+  const turret = await host.evaluate((slot) => window.__tankwar.session.host.sim.players[slot].tank.a, gs.slot);
+  check(Math.abs(turret + Math.PI / 4) < 0.03, `Pfeil hoch und rechts zielen schräg nach rechts oben (${turret.toFixed(2)})`);
+  await g.keyboard.down('ArrowLeft');
+  await sleep(1600);
+  await g.keyboard.up('ArrowLeft');
+  await sleep(direct ? 400 : 900);
+  const left = await host.evaluate((slot) => window.__tankwar.session.host.sim.players[slot].tank.a, gs.slot);
+  check(Math.abs(Math.abs(left) - Math.PI) < 0.03, `Pfeil links dreht den Turm nach links und hält dort (${left.toFixed(2)})`);
+
+  // Schießen: Leertaste feuert eine Rakete, die beim Gastgeber ankommt
   const rocketsBefore = await host.evaluate(() => window.__tankwar.session.host.sim.nextRocket);
-  await g.mouse.move(683, 200);
-  await g.mouse.down();
-  await sleep(300);
-  await g.mouse.up();
+  await g.keyboard.press('Space');
   await sleep(direct ? 300 : 800);
   const fired = await host.evaluate(() => window.__tankwar.session.host.sim.nextRocket);
-  check(fired > rocketsBefore, 'Klick feuert eine Rakete');
+  check(fired > rocketsBefore, 'Leertaste feuert eine Rakete');
 
   // Ab jetzt fahren alle automatisch und schießen aufeinander
   for (let i = 0; i < all.length; i += 1) await pilot(all[i], i * 1.7);
-  await sleep(direct ? 6000 : 3000);
+  await sleep(8000);
   if (direct) {
     await shot(guests[1], '05-gefecht');
     const rtt = (await view(guests[0])).rtt;
@@ -264,8 +276,8 @@ async function run(mode) {
 }
 
 try {
-  await run('direkt');
-  await run('vermittler');
+  // MODES=vermittler node tests/e2e.mjs spielt nur einen der beiden Durchgänge
+  for (const mode of (process.env.MODES || 'direkt,vermittler').split(',')) await run(mode);
   const leaked = overheard.some((text) => /Anna|Ben|Dana|hello|lobby/.test(text));
   check(overheard.length > 0 && !leaked, `Vermittler sehen nur Verschlüsseltes (${overheard.length} Nachrichten)`);
 } catch (err) {

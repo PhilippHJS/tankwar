@@ -10,13 +10,15 @@ Bisher gibt es ein Fahrzeug und eine Arena. Die Auswahl im Raum ist schon für m
 2. Den Einladungslink an bis zu drei Mitspieler schicken.
 3. Der Gastgeber stellt Rundendauer und Punkte zum Sieg ein und startet das Spiel. Freie Plätze können Bots übernehmen, alleine ausprobieren geht also auch.
 
-| Was | Tastatur und Maus | Gamepad |
+| Was | Tastatur | Gamepad |
 | --- | --- | --- |
 | Fahren | WASD | linker Stick oder Steuerkreuz |
-| Zielen | Maus, ohne Maus Pfeiltasten links/rechts oder Q/E | rechter Stick |
-| Schießen | Linksklick oder Leertaste, gedrückt halten feuert dauernd | A, RB oder RT |
+| Zielen | Pfeiltasten | rechter Stick |
+| Schießen | Leertaste, gedrückt halten feuert, sobald nachgeladen ist | A, RB oder RT |
 
-Fahren und Zielen sind getrennt: Die Wanne fährt in die gewünschte Richtung, der Turm zeigt unabhängig davon aufs Ziel. Liegt die Richtung eher hinter dem Panzer, fährt er rückwärts, statt umständlich zu wenden. Eine gestrichelte Linie zeigt die Flugbahn bis zum ersten Abpraller.
+Fahren und Zielen sind getrennt: Die Wanne fährt in die gewünschte Richtung, der Turm zeigt unabhängig davon aufs Ziel. Liegt die Richtung eher hinter dem Panzer, fährt er rückwärts, statt umständlich zu wenden.
+
+Ein Pfeil dreht den Turm in seine Richtung, bis er dort ankommt, dann bleibt er stehen. Zwei Pfeile zugleich zielen schräg dazwischen. Lässt man los, bleibt der Turm, wo er gerade ist, so lassen sich auch Winkel dazwischen einstellen. Eine gestrichelte Linie zeigt die Flugbahn bis zum ersten Abpraller, ein Balken unter dem eigenen Panzer das Nachladen.
 
 Das Gerät des Gastgebers führt den Spielstand. Seine Seite muss offen bleiben, solange gespielt wird. Wer neu lädt oder kurz die Verbindung verliert, landet wieder auf seinem Platz, bis dahin fährt ein Bot für ihn.
 
@@ -24,7 +26,7 @@ Das Gerät des Gastgebers führt den Spielstand. Seine Seite muss offen bleiben,
 
 - Jeder hat pro Runde 3 Leben und eine Lebensleiste. Drei Treffer kosten ein Leben.
 - Wer abgeschossen wird, ist 5 Sekunden raus und steigt dann am Startplatz wieder ein, der am weitesten von den anderen weg ist. Danach ist er 2 Sekunden unverwundbar.
-- Raketen fliegen mittelschnell, prallen von jeder Wand ab und verpuffen nach gut 3 Sekunden. Zwischen zwei Schüssen muss nachgeladen werden.
+- Raketen fliegen mittelschnell, prallen von jeder Wand ab und verpuffen nach knapp 4 Sekunden. Nach jedem Schuss dauert das Nachladen 1,5 Sekunden.
 - Kein Eigenbeschuss: Die eigenen Raketen tun dem eigenen Panzer nichts, auch nach einem Abpraller nicht.
 - Die Runde endet, wenn nur noch einer Leben hat. Erwischen sich die letzten beiden gleichzeitig, gewinnen beide.
 - Läuft die Zeit ab, gewinnt, wer die meisten Leben hat, bei Gleichstand, wer mehr Lebensleiste hat. Ist es dann immer noch gleich, gewinnen mehrere.
@@ -46,7 +48,7 @@ Der Gastgeber stellt sie im Raum ein, die Mitspieler sehen sie. Sie gelten ab de
 
 | Fahrzeug | Waffe | Tempo | Leben | Schaden | Nachladen |
 | --- | --- | --- | --- | --- | --- |
-| Prellbock | Rakete, prallt ab | 2,2 Felder/s | 100 | 34 | 0,7 s |
+| Prellbock | Rakete, prallt ab (5 Felder/s) | 2,2 Felder/s | 100 | 34 | 1,5 s |
 
 Neue Fahrzeuge kommen als Eintrag in `VEHICLES` in `js/config.js` dazu, neue Arenen als Raster in `js/arenas.js`.
 

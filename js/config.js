@@ -33,16 +33,16 @@ export const VEHICLES = [
     accel: 8, // so schnell kommt er auf Tempo
     brake: 14,
     turn: 3.4, // Wanne
-    turret: 4.2, // Turm, unabhängig von der Fahrtrichtung
+    turret: 3.4, // Turm, unabhängig von der Fahrtrichtung
     weapon: {
       name: 'Rakete',
-      speed: 6.2, // mittelschnell
+      speed: 5, // mittelschnell
       damage: 34, // drei Treffer kosten ein Leben
-      cooldown: 0.7,
-      life: 3.2, // dann verpufft sie
+      cooldown: 1.5, // so lange dauert das Nachladen
+      life: 3.8, // dann verpufft sie
     },
     // für die Balken in der Auswahl, 1 bis 5
-    stats: { tempo: 2, panzer: 3, feuer: 3 },
+    stats: { tempo: 2, panzer: 3, feuer: 2 },
   },
 ];
 

@@ -388,7 +388,7 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
     slot: -1, winners: [], champions: [], rockets: [],
     players: Array.from({ length: MAX_PLAYERS }, (_, slot) => ({
       slot, in: false, x: 0, y: 0, h: 0, a: 0, v: 0, hp: 0, maxHp: 100, lives: 0, dead: 0, shield: 0,
-      points: 0, kills: 0, tp: 0, vehicle: 0, name: BOT_NAMES[slot], kind: 'free', online: true, mine: false,
+      points: 0, kills: 0, tp: 0, vehicle: 0, reload: 1, name: BOT_NAMES[slot], kind: 'free', online: true, mine: false,
     })),
   };
   const rocketPool = [];
@@ -426,6 +426,10 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
       out.in = arr[P.IN] === 1;
       out.vehicle = cleanVehicle(arr[P.VEH]);
       out.maxHp = VEHICLES[out.vehicle].health;
+      // Nachladen: 1 heißt bereit
+      const cdMax = Math.max(1, Math.round(VEHICLES[out.vehicle].weapon.cooldown * TICK_RATE));
+      const cd = out.mine && haveMe ? me.cd : arr[P.CD];
+      out.reload = 1 - Math.min(cdMax, Math.max(0, cd)) / cdMax;
       out.hp = arr[P.HP];
       out.lives = arr[P.LIVES];
       out.dead = arr[P.DEAD];

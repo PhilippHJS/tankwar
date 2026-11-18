@@ -47,7 +47,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 canvas#stage { position: fixed; inset: 0; display: block; }
-body[data-screen='game'][data-aim='mouse'] canvas#stage { cursor: none; }
 [hidden] { display: none !important; }
 
 /* ---------- Tafeln ---------- */
