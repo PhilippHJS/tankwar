@@ -3,7 +3,7 @@
 // Zeichnen nötig ist.
 
 import { solidAt } from './arenas.js';
-import { traceRocket } from './physics.js';
+import { traceRocket, gunRay, blastPoint } from './physics.js';
 import { EVENT, PHASE } from './sim.js';
 import { FX } from './client.js';
 import { COLORS, VEHICLES, TANK_R, BARREL, LIVES } from './config.js';
@@ -65,7 +65,7 @@ export function markPath(ctx, mark, s) {
 
 // Ein Panzer in Feldern, Mitte bei 0,0, schon gedreht nach der Wanne.
 // `turret`: Turmwinkel relativ zur Wanne. Wird auch für die Symbole im Raum benutzt.
-export function drawTankShape(ctx, look, turret, { tread = 0, recoil = 0, wreck = false, flash = 0 } = {}) {
+export function drawTankShape(ctx, look, turret, { tread = 0, recoil = 0, wreck = false, flash = 0, kind = 'rocket' } = {}) {
   const body = wreck ? '#4a4744' : look.color;
   const deep = wreck ? '#24211f' : look.deep;
   const light = wreck ? '#5e5a55' : look.light;
@@ -102,30 +102,91 @@ export function drawTankShape(ctx, look, turret, { tread = 0, recoil = 0, wreck 
   ctx.fillRect(-0.33, -0.21, 0.08, 0.42);
   ctx.globalAlpha /= 0.35;
 
-  // Turm
+  // Turm, je nach Waffe anders
   ctx.save();
   ctx.rotate(turret);
-  ctx.fillStyle = wreck ? '#2f2d2b' : '#3a3f48';
-  roundRect(ctx, 0.04 - recoil, -0.06, BARREL - 0.04, 0.12, 0.03);
-  ctx.fill();
-  ctx.fillStyle = wreck ? '#1f1e1c' : '#262a31';
-  roundRect(ctx, BARREL - 0.1 - recoil, -0.075, 0.1, 0.15, 0.03);
-  ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.18)';
-  ctx.fillRect(0.08 - recoil, -0.05, BARREL - 0.2, 0.025);
-  const g = ctx.createRadialGradient(-0.06, -0.07, 0.02, 0, 0, 0.24);
+  const metal = wreck ? '#2f2d2b' : '#3a3f48';
+  const dark = wreck ? '#1f1e1c' : '#262a31';
+  const shine = 'rgba(255,255,255,0.18)';
+  const g = ctx.createRadialGradient(-0.06, -0.07, 0.02, 0, 0, 0.26);
   g.addColorStop(0, light);
   g.addColorStop(1, body);
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.arc(0, 0, 0.21, 0, TAU);
-  ctx.fill();
   ctx.lineWidth = 0.04;
   ctx.strokeStyle = deep;
-  ctx.stroke();
+  if (kind === 'gun') {
+    // zwei schlanke Läufe, eckiger Turm
+    for (const side of [-0.05, 0.05]) {
+      ctx.fillStyle = metal;
+      roundRect(ctx, 0.05 - recoil, side - 0.027, BARREL + 0.06, 0.054, 0.02);
+      ctx.fill();
+      ctx.fillStyle = dark;
+      ctx.fillRect(BARREL + 0.03 - recoil, side - 0.035, 0.08, 0.07);
+    }
+    ctx.fillStyle = g;
+    roundRect(ctx, -0.17, -0.16, 0.34, 0.32, 0.07);
+    ctx.fill();
+    ctx.stroke();
+  } else if (kind === 'mortar') {
+    // kurzer, dicker Lauf, breiter Turm
+    ctx.fillStyle = metal;
+    roundRect(ctx, 0.04 - recoil, -0.1, 0.4, 0.2, 0.04);
+    ctx.fill();
+    ctx.fillStyle = dark;
+    roundRect(ctx, 0.36 - recoil, -0.135, 0.12, 0.27, 0.04);
+    ctx.fill();
+    ctx.fillStyle = shine;
+    ctx.fillRect(0.08 - recoil, -0.08, 0.26, 0.03);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    for (let i = 0; i < 8; i += 1) {
+      const th = (i / 8) * TAU + Math.PI / 8;
+      ctx.lineTo(Math.cos(th) * 0.25, Math.sin(th) * 0.25);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else if (kind === 'zap') {
+    // Spule statt Lauf, in der Mitte eine leuchtende Kugel
+    ctx.fillStyle = wreck ? '#3b3632' : '#8a5a2b';
+    ctx.beginPath();
+    ctx.arc(0, 0, 0.23, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = wreck ? '#25211e' : '#d49a5a';
+    ctx.lineWidth = 0.035;
+    for (const r of [0.2, 0.15]) {
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, TAU);
+      ctx.stroke();
+    }
+    ctx.fillStyle = wreck ? '#4a4744' : light;
+    ctx.beginPath();
+    ctx.arc(0, 0, 0.1, 0, TAU);
+    ctx.fill();
+    ctx.lineWidth = 0.03;
+    ctx.strokeStyle = deep;
+    ctx.stroke();
+    // kleiner Fühler zeigt, wohin der Turm schaut
+    ctx.fillStyle = metal;
+    roundRect(ctx, 0.2, -0.03, 0.16, 0.06, 0.02);
+    ctx.fill();
+  } else {
+    ctx.fillStyle = metal;
+    roundRect(ctx, 0.04 - recoil, -0.06, BARREL - 0.04, 0.12, 0.03);
+    ctx.fill();
+    ctx.fillStyle = dark;
+    roundRect(ctx, BARREL - 0.1 - recoil, -0.075, 0.1, 0.15, 0.03);
+    ctx.fill();
+    ctx.fillStyle = shine;
+    ctx.fillRect(0.08 - recoil, -0.05, BARREL - 0.2, 0.025);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, 0.21, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+  }
   if (!wreck) {
     ctx.fillStyle = deep;
-    markPath(ctx, look.mark, 0.075);
+    markPath(ctx, look.mark, kind === 'mortar' ? 0.09 : kind === 'zap' ? 0.05 : 0.075);
     ctx.fill('evenodd');
   }
   ctx.restore();
@@ -137,6 +198,8 @@ export function drawTankShape(ctx, look, turret, { tread = 0, recoil = 0, wreck 
     ctx.fill();
   }
 }
+
+const kindOf = (p) => (VEHICLES[p.vehicle] || VEHICLES[0]).weapon.kind;
 
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
@@ -150,6 +213,7 @@ export function createRenderer(canvas) {
   let floor = null;
   let floorKey = '';
   let lastT = null;
+  let viewNow = null; // für Blitze, die dem Zitteraal folgen
 
   const particles = [];
   const scorches = [];
@@ -358,6 +422,49 @@ export function createRenderer(canvas) {
       shake = Math.max(shake, e.of === view.slot ? 0.4 : 0.18);
       return;
     }
+    if (e.kind === EVENT.SHOT) {
+      lookOf(e.by).recoilAt = t;
+      spawn({ kind: 'tracer', x: e.x, y: e.y, x2: e.x2, y2: e.y2, life: 0.11, max: 0.11, color: (COLORS[e.by] || COLORS[0]).light });
+      spawn({ kind: 'flash', x: e.x, y: e.y, r: 0.22, life: 0.07, max: 0.07, color: '#fff3c4' });
+      if (e.of < 0) {
+        burst(e.x2, e.y2, 4, () => {
+          const th = rand() * TAU;
+          return { kind: 'spark', x: e.x2, y: e.y2, vx: Math.cos(th) * 2.5, vy: Math.sin(th) * 2.5, life: 0.18, max: 0.18, color: '#e8dcc0' };
+        });
+      }
+      return;
+    }
+    if (e.kind === EVENT.BLAST) {
+      const r = (e.item || 130) / 100;
+      lookOf(e.by).recoilAt = t;
+      spawn({ kind: 'flash', x: e.x, y: e.y, r: r * 1.5, life: 0.2, max: 0.2, color: '#fff0c0' });
+      spawn({ kind: 'ring', x: e.x, y: e.y, r: 0.3, grow: (r - 0.3) / 0.3, life: 0.3, max: 0.3, color: '#ffb347', width: 0.12 });
+      burst(e.x, e.y, 16, () => {
+        const th = rand() * TAU;
+        const v = 0.8 + rand() * 2.4;
+        return { kind: 'fire', x: e.x, y: e.y, vx: Math.cos(th) * v, vy: Math.sin(th) * v, r: 0.14 + rand() * 0.18, grow: 0.7, life: 0.3 + rand() * 0.3, max: 0.6 };
+      });
+      burst(e.x, e.y, 10, () => {
+        const th = rand() * TAU;
+        const v = 0.3 + rand() * 1.2;
+        return { kind: 'smoke', x: e.x, y: e.y, vx: Math.cos(th) * v, vy: Math.sin(th) * v, r: 0.22 + rand() * 0.15, grow: 1, life: 0.8 + rand() * 0.6, max: 1.4, color: '70,64,58' };
+      });
+      scorches.push({ x: e.x, y: e.y, r: r * 0.9, t, rot: rand() * TAU });
+      if (scorches.length > 40) scorches.shift();
+      const me = view.players[view.slot];
+      if (me && Math.hypot(me.x - e.x, me.y - e.y) < r + 1.5) shake = Math.max(shake, 0.3);
+      else shake = Math.max(shake, 0.1);
+      return;
+    }
+    if (e.kind === EVENT.ZAP) {
+      spawn({ kind: 'bolt', from: e.by, x: e.x, y: e.y, life: 0.14, max: 0.14, color: (COLORS[e.by] || COLORS[0]).light });
+      if (e.item > 0) lookOf(e.of).flashAt = t;
+      burst(e.x, e.y, 3, () => {
+        const th = rand() * TAU;
+        return { kind: 'spark', x: e.x, y: e.y, vx: Math.cos(th) * 3, vy: Math.sin(th) * 3, life: 0.2, max: 0.2, color: e.item > 0 ? '#c8f6ff' : '#ffffff' };
+      });
+      return;
+    }
     if (e.kind === EVENT.POP) {
       spawn({ kind: 'flash', x: e.x, y: e.y, r: 0.25, life: 0.08, max: 0.08, color: '#ffe8b0' });
       burst(e.x, e.y, 5, () => ({ kind: 'smoke', x: e.x, y: e.y, vx: (rand() - 0.5) * 1.4, vy: (rand() - 0.5) * 1.4, r: 0.07, grow: 0.6, life: 0.5, max: 0.5, color: '170,165,155' }));
@@ -448,6 +555,23 @@ export function createRenderer(canvas) {
         ctx.fillStyle = p.color;
         ctx.fillRect(-p.s * S, -p.s * S * 0.6, p.s * 2 * S, p.s * 1.2 * S);
         ctx.restore();
+      } else if (p.kind === 'tracer') {
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.globalAlpha = k;
+        ctx.strokeStyle = 'rgba(255,240,190,0.45)';
+        ctx.lineWidth = Math.max(3, S * 0.14);
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(sx(p.x2), sy(p.y2));
+        ctx.stroke();
+        ctx.strokeStyle = '#fffbe8';
+        ctx.lineWidth = Math.max(1.5, S * 0.045);
+        ctx.stroke();
+        ctx.restore();
+      } else if (p.kind === 'bolt') {
+        const from = viewNow && viewNow.players[p.from];
+        if (from) zigzag(sx(from.x), sy(from.y), x, y, p.color, k);
       } else if (p.kind === 'glow') {
         ctx.globalAlpha = k * 0.8;
         ctx.fillStyle = p.color;
@@ -457,6 +581,119 @@ export function createRenderer(canvas) {
         ctx.globalAlpha = 1;
       }
     }
+  }
+
+  // Ein zuckender Blitz von a nach b
+  function zigzag(ax, ay, bx, by, color, k) {
+    const len = Math.hypot(bx - ax, by - ay) || 1;
+    const nx = -(by - ay) / len;
+    const ny = (bx - ax) / len;
+    const parts = Math.max(4, Math.round(len / (S * 0.35)));
+    const path = () => {
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      for (let i = 1; i < parts; i += 1) {
+        const f = i / parts;
+        const off = (Math.random() - 0.5) * S * 0.3;
+        ctx.lineTo(ax + (bx - ax) * f + nx * off, ay + (by - ay) * f + ny * off);
+      }
+      ctx.lineTo(bx, by);
+    };
+    ctx.save();
+    ctx.lineJoin = 'round';
+    ctx.globalAlpha = Math.min(1, k * 1.4);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(3, S * 0.1);
+    path();
+    ctx.stroke();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = Math.max(1.2, S * 0.035);
+    path();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Zielkreis einer Bombe, die gerade aufgeladen wird: sehen alle
+  function drawCharge(p, t) {
+    const w = (VEHICLES[p.vehicle] || VEHICLES[0]).weapon;
+    if (w.kind !== 'mortar' || !(p.ch > 0)) return;
+    const look = COLORS[p.slot];
+    const at = blastPoint(viewNow.arena, p, p.ch);
+    const cx = sx(at.x);
+    const cy = sy(at.y);
+    const r = w.radius * S;
+    ctx.save();
+    ctx.setLineDash([Math.max(2, S * 0.08), Math.max(3, S * 0.12)]);
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = Math.max(1, S * 0.03);
+    ctx.beginPath();
+    ctx.moveTo(sx(p.x), sy(p.y));
+    ctx.lineTo(cx, cy);
+    ctx.stroke();
+    ctx.fillStyle = look.color;
+    ctx.globalAlpha = 0.16 + 0.06 * Math.sin(t / 80);
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, TAU);
+    ctx.fill();
+    ctx.globalAlpha = 0.95;
+    ctx.lineDashOffset = -t / 30;
+    ctx.setLineDash([Math.max(4, S * 0.22), Math.max(3, S * 0.12)]);
+    ctx.strokeStyle = look.color;
+    ctx.lineWidth = Math.max(2, S * 0.06);
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.lineWidth = Math.max(1.5, S * 0.04);
+    ctx.beginPath();
+    ctx.moveTo(cx - S * 0.22, cy);
+    ctx.lineTo(cx + S * 0.22, cy);
+    ctx.moveTo(cx, cy - S * 0.22);
+    ctx.lineTo(cx, cy + S * 0.22);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Zitteraal beim Blitzen: knisternder Kreis um den Panzer
+  function drawAura(p, t) {
+    const w = (VEHICLES[p.vehicle] || VEHICLES[0]).weapon;
+    if (w.kind !== 'zap') return;
+    const x = sx(p.x);
+    const y = sy(p.y);
+    const r = w.radius * S;
+    const look = COLORS[p.slot];
+    ctx.save();
+    if (p.on) {
+      const g = ctx.createRadialGradient(x, y, r * 0.2, x, y, r);
+      g.addColorStop(0, 'rgba(160,240,255,0.16)');
+      g.addColorStop(1, 'rgba(160,240,255,0.04)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(190,245,255,0.55)';
+      ctx.lineWidth = Math.max(1.5, S * 0.04);
+      ctx.setLineDash([Math.max(3, S * 0.1), Math.max(4, S * 0.16)]);
+      ctx.lineDashOffset = t / 20;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, TAU);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      for (let i = 0; i < 3; i += 1) {
+        const th = Math.random() * TAU;
+        const len = 0.35 + Math.random() * 0.4;
+        zigzag(x + Math.cos(th) * S * 0.12, y + Math.sin(th) * S * 0.12, x + Math.cos(th) * S * len, y + Math.sin(th) * S * len, look.light, 0.8);
+      }
+    } else if (p.mine) {
+      // eigene Reichweite als dezenter Ring
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+      ctx.lineWidth = Math.max(1, S * 0.025);
+      ctx.setLineDash([Math.max(2, S * 0.06), Math.max(4, S * 0.14)]);
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, TAU);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   function drawRocket(r, t) {
@@ -532,17 +769,34 @@ export function createRenderer(canvas) {
       roundRect(ctx, left, top, w * frac, h, 2);
       ctx.fill();
     }
-    // Nachladen, nur beim eigenen Panzer: füllt sich, gelb heißt bereit
+    // Waffe, nur beim eigenen Panzer: Nachladen (gelb heißt bereit),
+    // Magazin der Pistole, Mana des Zitteraals
     if (p.mine) {
+      const weapon = (VEHICLES[p.vehicle] || VEHICLES[0]).weapon;
       const rh = Math.max(3, 0.06 * S);
       const rt = top + h + 3;
       ctx.fillStyle = 'rgba(20,22,28,0.7)';
       roundRect(ctx, left - 1, rt - 1, w + 2, rh + 2, 2);
       ctx.fill();
-      ctx.fillStyle = p.reload >= 1 ? '#ffc83a' : 'rgba(235,230,215,0.75)';
-      if (p.reload > 0) {
-        roundRect(ctx, left, rt, w * Math.min(1, p.reload), rh, 1.5);
-        ctx.fill();
+      if (weapon.kind === 'zap') {
+        ctx.fillStyle = p.mana >= 1 ? '#7fe9ff' : 'rgba(127,233,255,0.7)';
+        if (p.mana > 0) {
+          roundRect(ctx, left, rt, w * Math.min(1, p.mana), rh, 1.5);
+          ctx.fill();
+        }
+      } else if (weapon.kind === 'gun' && p.ammo > 0) {
+        const gap = 2;
+        const cell = (w - gap * (weapon.magazine - 1)) / weapon.magazine;
+        for (let i = 0; i < weapon.magazine; i += 1) {
+          ctx.fillStyle = i < p.ammo ? '#ffc83a' : 'rgba(235,230,215,0.18)';
+          ctx.fillRect(left + i * (cell + gap), rt, cell, rh);
+        }
+      } else {
+        ctx.fillStyle = p.reload >= 1 ? '#ffc83a' : 'rgba(235,230,215,0.75)';
+        if (p.reload > 0) {
+          roundRect(ctx, left, rt, w * Math.min(1, p.reload), rh, 1.5);
+          ctx.fill();
+        }
       }
     }
     // Leben als Punkte
@@ -588,9 +842,17 @@ export function createRenderer(canvas) {
     ctx.globalAlpha = 1;
   }
 
+  // Zielhilfe für den eigenen Panzer: bei der Rakete die Bahn bis zum ersten
+  // Abpraller, bei der Pistole die Schusslinie bis zur Wand oder Reichweite.
   function drawAim(p, view) {
     const vehicle = VEHICLES[p.vehicle] || VEHICLES[0];
-    const points = traceRocket(view.arena, p, vehicle.weapon, 1, 1.6);
+    const w = vehicle.weapon;
+    let points;
+    if (w.kind === 'rocket') points = traceRocket(view.arena, p, w, 1, 1.6);
+    else if (w.kind === 'gun') {
+      const ray = gunRay(view.arena, p, w.range);
+      points = [{ x: ray.sx, y: ray.sy }, { x: ray.sx + ray.dx * ray.len, y: ray.sy + ray.dy * ray.len }];
+    } else return;
     ctx.save();
     ctx.lineCap = 'round';
     ctx.setLineDash([Math.max(2, S * 0.06), Math.max(4, S * 0.16)]);
@@ -608,6 +870,7 @@ export function createRenderer(canvas) {
   function draw(view, t, opts = {}) {
     const dt = lastT === null ? 0 : Math.min(0.05, (t - lastT) / 1000);
     lastT = t;
+    viewNow = view;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
     if (!view || !view.arena) return;
@@ -676,7 +939,7 @@ export function createRenderer(canvas) {
         ctx.rotate(p.h);
         ctx.scale(S, S);
         ctx.globalAlpha = p.lives > 0 ? 0.9 : 0.6;
-        drawTankShape(ctx, COLORS[p.slot], p.a - p.h, { wreck: true, tread: look.tread });
+        drawTankShape(ctx, COLORS[p.slot], p.a - p.h, { wreck: true, tread: look.tread, kind: kindOf(p) });
         ctx.restore();
         look.smokeAt -= dt;
         if (look.smokeAt <= 0 && p.lives > 0) {
@@ -726,7 +989,7 @@ export function createRenderer(canvas) {
         ctx.rotate(p.h);
         ctx.scale(S, S);
         ctx.globalAlpha = blink;
-        drawTankShape(ctx, COLORS[p.slot], p.a - p.h, { tread: look.tread, recoil, flash });
+        drawTankShape(ctx, COLORS[p.slot], p.a - p.h, { tread: look.tread, recoil, flash, kind: kindOf(p) });
         ctx.restore();
       }
     }
@@ -745,6 +1008,10 @@ export function createRenderer(canvas) {
       for (const p of view.players) {
         if (!p.in || p.dead > 0 || p.lives <= 0) continue;
         if (p.shield > 0) drawShield(p, sx(p.x), sy(p.y), t);
+        drawAura(p, t);
+      }
+      for (const p of view.players) {
+        if (p.in && p.dead === 0 && p.lives > 0) drawCharge(p, t);
       }
       const me = view.slot >= 0 ? view.players[view.slot] : null;
       if (opts.aim && me && me.in && me.dead === 0 && me.lives > 0 && (view.phase === PHASE.PLAY || view.phase === PHASE.COUNTDOWN)) drawAim(me, view);

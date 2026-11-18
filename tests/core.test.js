@@ -23,6 +23,29 @@ test('Arenen sind geschlossen und haben genug Startplätze', () => {
   }
 });
 
+test('in jeder Arena ist jedes freie Feld erreichbar', () => {
+  for (const a of ARENAS) {
+    const start = Math.floor(a.spawns[0].y) * a.W + Math.floor(a.spawns[0].x);
+    const seen = new Set([start]);
+    const queue = [start];
+    while (queue.length) {
+      const cell = queue.shift();
+      const x = cell % a.W;
+      const y = (cell - x) / a.W;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (solidAt(a, nx, ny) || seen.has(ny * a.W + nx)) continue;
+        seen.add(ny * a.W + nx);
+        queue.push(ny * a.W + nx);
+      }
+    }
+    let free = 0;
+    for (let i = 0; i < a.W * a.H; i += 1) if (!a.solid[i]) free += 1;
+    assert.equal(seen.size, free, a.name);
+  }
+});
+
 test('Eingaben lassen sich verpacken und auspacken', () => {
   for (const move of [0, 1, 9, 16]) {
     for (const aim of [-1, 0, 511, 1023]) {
@@ -73,10 +96,10 @@ test('der Turm dreht sich unabhängig von der Wanne', () => {
 test('im Countdown nur zielen, nach Rundenende nicht mehr schießen', () => {
   const tank = newTank(10.5, 1.8, 0);
   const fired = stepTank(arena, tank, packInput(RIGHT, aimIndex(1), true), vehicle, MODE.AIM);
-  assert.equal(fired, false);
+  assert.ok(!fired);
   assert.equal(tank.x, 10.5);
   assert.ok(tank.a > 0);
-  assert.equal(stepTank(arena, tank, packInput(RIGHT, -1, true), vehicle, MODE.CRUISE), false);
+  assert.ok(!stepTank(arena, tank, packInput(RIGHT, -1, true), vehicle, MODE.CRUISE));
   assert.ok(tank.x > 10.5);
 });
 

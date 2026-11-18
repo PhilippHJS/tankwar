@@ -13,15 +13,20 @@
 // flüssig fahren.
 
 import { arenaOf } from './arenas.js';
-import { newTank, copyTank, stepTank, launchRocket, stepRocket, copyRocket, IDLE, inputFire, withoutFire, wrap, angleDiff } from './physics.js';
-import { PHASE, modeOf } from './sim.js';
-import { DT, TICK_RATE, PROTOCOL, MAX_PLAYERS, VEHICLES, BOT_NAMES, cleanVehicle, rulesFor } from './config.js';
+import {
+  newTank, copyTank, stepTank, launchRocket, stepRocket, copyRocket, gunRay, rayHitsCircle, blastPoint, IDLE, inputFire, withoutFire, wrap, angleDiff,
+} from './physics.js';
+import { PHASE, EVENT, modeOf } from './sim.js';
+import { DT, TICK_RATE, PROTOCOL, MAX_PLAYERS, VEHICLES, BOT_NAMES, TANK_R, cleanVehicle } from './config.js';
 
 const STEP_MS = DT * 1000;
 const LOST_MS = 5000;
 
 // Felder eines Panzers im Spielstand
-export const P = { IN: 0, X: 1, Y: 2, H: 3, A: 4, V: 5, CD: 6, HP: 7, LIVES: 8, DEAD: 9, SHIELD: 10, PTS: 11, TP: 12, VEH: 13, KILLS: 14 };
+export const P = {
+  IN: 0, X: 1, Y: 2, H: 3, A: 4, V: 5, CD: 6, HP: 7, LIVES: 8, DEAD: 9, SHIELD: 10, PTS: 11, TP: 12, VEH: 13, KILLS: 14,
+  AMMO: 15, CH: 16, MANA: 17, ZT: 18, REST: 19, LOCK: 20, ON: 21,
+};
 // Felder einer Rakete
 const R = { ID: 0, OWNER: 1, SEQ: 2, X: 3, Y: 4, VX: 5, VY: 6, LIFE: 7, B: 8 };
 // Zusätzliche Effekte neben den Ereignissen des Gastgebers
@@ -98,6 +103,13 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
     tank.a = arr[P.A];
     tank.v = arr[P.V];
     tank.cd = arr[P.CD];
+    tank.ammo = arr[P.AMMO];
+    tank.ch = arr[P.CH];
+    tank.mana = arr[P.MANA];
+    tank.zt = arr[P.ZT];
+    tank.rest = arr[P.REST];
+    tank.lock = arr[P.LOCK];
+    tank.on = arr[P.ON];
   }
   const isLive = (arr) => arr[P.IN] === 1 && arr[P.LIVES] > 0 && arr[P.DEAD] === 0;
 
@@ -135,7 +147,7 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
   function onSnapshot(snap, now) {
     if (!Array.isArray(snap.p) || snap.p.length !== MAX_PLAYERS) return;
     if (client.latest && (snap.rn < client.latest.rn || snap.k < client.latest.k - 2 * TICK_RATE)) return;
-    const arena = arenaOf(rulesFor(snap.o).arena);
+    const arena = arenaOf(snap.ar);
     if (arena !== client.arena || (client.latest && snap.rn !== client.latest.rn)) {
       client.arena = arena;
       snaps.length = 0;
@@ -157,8 +169,10 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
     for (const e of snap.e || []) {
       if (seenEvents.has(e[0])) continue;
       seenEvents.add(e[0]);
-      // Beim Einstieg mitten in der Runde keine alten Ereignisse nachspielen
-      if (client.latest) client.effects.push({ id: e[0], tick: e[1], kind: e[2], by: e[3], of: e[4], x: e[5], y: e[6], item: e[7] });
+      // Beim Einstieg mitten in der Runde keine alten Ereignisse nachspielen.
+      // Eigene Schüsse und Bomben sind schon beim Drücken gezeigt worden.
+      const own = e[3] === client.slot && (e[2] === EVENT.SHOT || e[2] === EVENT.BLAST);
+      if (client.latest && !own) client.effects.push({ id: e[0], tick: e[1], kind: e[2], by: e[3], of: e[4], x: e[5], y: e[6], item: e[7], x2: e[8], y2: e[9] });
     }
     if (seenEvents.size > 600) {
       const keep = new Set((snap.e || []).map((e) => e[0]));
@@ -249,6 +263,25 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
     return client.latest && client.slot >= 0 ? client.latest.p[client.slot] : null;
   }
 
+  // Eigener Schuss, sofort gezeigt: Rakete fliegt los, Pistole zieht ihre
+  // Spur, Bombe explodiert. Ob getroffen wurde, sagt der Gastgeber.
+  function showShot(w, shot) {
+    if (w.kind === 'rocket') {
+      const g = { seq, r: launchRocket(client.arena, me, w) };
+      stepRocket(client.arena, g.r);
+      ghosts.push(g);
+      client.effects.push({ kind: FX.FIRE, by: client.slot, x: g.r.x, y: g.r.y });
+    } else if (w.kind === 'gun') {
+      const ray = gunRay(client.arena, me, w.range);
+      let end = ray.len;
+      for (const o of others) end = Math.min(end, rayHitsCircle(ray.sx, ray.sy, ray.dx, ray.dy, ray.len, o.x, o.y, TANK_R));
+      client.effects.push({ kind: EVENT.SHOT, by: client.slot, of: -1, x: ray.sx, y: ray.sy, x2: ray.sx + ray.dx * end, y2: ray.sy + ray.dy * end });
+    } else if (w.kind === 'mortar') {
+      const at = blastPoint(client.arena, me, shot);
+      client.effects.push({ kind: EVENT.BLAST, by: client.slot, of: -1, x: at.x, y: at.y, item: Math.round(w.radius * 100) });
+    }
+  }
+
   // Einmal pro Bild: Zeit vorrücken, Eingabe anwenden und verschicken.
   client.frame = (now, inputCode = IDLE) => {
     if (lastFrame === null) lastFrame = now;
@@ -286,12 +319,8 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
       pending.push({ seq, code });
       if (pending.length > 240) pending.shift();
       copyTank(me, mePrev);
-      if (isLive(arr) && stepTank(client.arena, me, code, vehicle, mode, others)) {
-        const g = { seq, r: launchRocket(client.arena, me, vehicle.weapon) };
-        stepRocket(client.arena, g.r);
-        ghosts.push(g);
-        client.effects.push({ kind: FX.FIRE, by: client.slot, x: g.r.x, y: g.r.y });
-      }
+      const shot = isLive(arr) ? stepTank(client.arena, me, code, vehicle, mode, others) : 0;
+      if (shot) showShot(vehicle.weapon, shot);
       recent.push(code);
       if (recent.length > 8) recent.shift();
       stepsSinceSend += 1;
@@ -388,7 +417,7 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
     slot: -1, winners: [], champions: [], rockets: [],
     players: Array.from({ length: MAX_PLAYERS }, (_, slot) => ({
       slot, in: false, x: 0, y: 0, h: 0, a: 0, v: 0, hp: 0, maxHp: 100, lives: 0, dead: 0, shield: 0,
-      points: 0, kills: 0, tp: 0, vehicle: 0, reload: 1, name: BOT_NAMES[slot], kind: 'free', online: true, mine: false,
+      points: 0, kills: 0, tp: 0, vehicle: 0, reload: 1, ammo: 0, ch: 0, mana: 1, on: 0, name: BOT_NAMES[slot], kind: 'free', online: true, mine: false,
     })),
   };
   const rocketPool = [];
@@ -426,16 +455,24 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
       out.in = arr[P.IN] === 1;
       out.vehicle = cleanVehicle(arr[P.VEH]);
       out.maxHp = VEHICLES[out.vehicle].health;
-      // Nachladen: 1 heißt bereit
-      const cdMax = Math.max(1, Math.round(VEHICLES[out.vehicle].weapon.cooldown * TICK_RATE));
-      const cd = out.mine && haveMe ? me.cd : arr[P.CD];
-      out.reload = 1 - Math.min(cdMax, Math.max(0, cd)) / cdMax;
       out.hp = arr[P.HP];
       out.lives = arr[P.LIVES];
       out.dead = arr[P.DEAD];
       out.shield = arr[P.SHIELD];
       out.points = arr[P.PTS];
       out.kills = arr[P.KILLS];
+      // Waffe: Magazin, Zielkreis, Mana, Blitzen. Beim eigenen Panzer vorausberechnet.
+      const tank = out.mine && haveMe ? me : null;
+      out.ammo = tank ? tank.ammo : arr[P.AMMO];
+      out.ch = tank ? tank.ch : arr[P.CH];
+      out.mana = tank ? tank.mana : arr[P.MANA];
+      out.on = tank ? tank.on : arr[P.ON];
+      // Nachladen: 1 heißt bereit
+      const w = VEHICLES[out.vehicle].weapon;
+      const cdSecs = w.kind === 'gun' ? (out.ammo <= 0 ? w.reload : w.interval) : w.cooldown || 0;
+      const cdMax = Math.max(1, Math.round(cdSecs * TICK_RATE));
+      const cd = tank ? tank.cd : arr[P.CD];
+      out.reload = 1 - Math.min(cdMax, Math.max(0, cd)) / cdMax;
       if (info) {
         out.name = info.name;
         out.kind = info.kind;

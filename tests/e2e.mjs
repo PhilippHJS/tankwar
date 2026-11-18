@@ -171,6 +171,15 @@ async function run(mode) {
     check(!(await view(guests[0])).net.direct, 'ohne Direktverbindung läuft es über die Vermittler');
   }
 
+  // Fahrzeugwahl: Gast 2 nimmt die Kimme, Gast 3 den Zitteraal
+  await guests[1].click('.vehicle[data-index="1"]');
+  await guests[2].click('.vehicle[data-index="3"]');
+  await until(host, () => {
+    const slots = window.__tankwar.session.client.lobby.slots;
+    return slots.some((slot) => slot.name === 'Dana' && slot.vehicle === 3) && slots.some((slot) => slot.name === 'Cem <b>' && slot.vehicle === 1);
+  });
+  check((await guests[2].getAttribute('.vehicle[data-index="3"]', 'aria-checked')) === 'true', 'Gast wählt ein Fahrzeug, der Gastgeber sieht es');
+
   // Einstellungen: 1 Minute, 1 Punkt zum Sieg. Gäste sehen sie, können sie aber nicht ändern.
   await host.click('#options label:has(input[name="opt-length"][value="0"])');
   await host.click('#options label:has(input[name="opt-target"][value="0"])');
@@ -187,6 +196,11 @@ async function run(mode) {
   await sleep(1200);
   if (direct) await shot(guests[0], '04-countdown');
   for (const page of all) await until(page, (phase) => window.__tankwar.view().phase === phase, PHASE.PLAY);
+  const rides = await host.evaluate(() => window.__tankwar.session.host.sim.players.map((p) => p.vehicle).join());
+  const danaSlot = (await view(guests[2])).slot;
+  check(rides.split(',')[danaSlot] === '3', `gewählte Fahrzeuge fahren mit (${rides})`);
+  const arenas = await Promise.all(all.map((page) => page.evaluate(() => window.__tankwar.view().arena.name)));
+  check(arenas.every((name) => name === arenas[0]), `alle spielen in derselben Arena (${arenas[0]})`);
 
   // Fahren: mit der Tastatur, die eigene Anzeige muss beim Gastgeber ankommen
   const before = await truth(host);

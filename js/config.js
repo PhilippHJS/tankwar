@@ -3,7 +3,7 @@
 
 export const TICK_RATE = 60;
 export const DT = 1 / TICK_RATE;
-export const PROTOCOL = 1;
+export const PROTOCOL = 2;
 
 // Plätze im Raum. Alles ist auf eine beliebige Zahl ausgelegt, für mehr
 // Spieler braucht es nur mehr Farben (siehe COLORS) und Arenen mit genug
@@ -15,34 +15,89 @@ export const RESPAWN_TICKS = 5 * TICK_RATE; // so lange ist man nach einem Absch
 export const SHIELD_TICKS = Math.round(2 * TICK_RATE); // unverwundbar nach dem Wiedereinstieg
 export const COUNTDOWN_TICKS = Math.round(3.4 * TICK_RATE);
 export const RESULT_TICKS = 5 * TICK_RATE; // so lange steht das Rundenergebnis, dann geht es weiter
-export const EVENT_TICKS = 3 * TICK_RATE; // so lange bleibt ein Ereignis im Spielstand
+export const EVENT_TICKS = TICK_RATE; // so lange bleibt ein Ereignis im Spielstand
 
 export const TANK_R = 0.4; // Panzer stoßen als Kreis an
 export const ROCKET_R = 0.12;
 export const BARREL = 0.6; // von der Mitte bis zur Mündung
 
-// Fahrzeuge. Für den Anfang gibt es eins, die Auswahl im Raum ist aber schon da.
-// Tempo in Feldern pro Sekunde, Drehen in Bogenmaß pro Sekunde.
+// Fahrzeuge. Tempo in Feldern pro Sekunde, Drehen in Bogenmaß pro Sekunde,
+// Zeiten in Sekunden. `kind` bestimmt, wie die Waffe funktioniert:
+//   rocket  Rakete, prallt an jeder Wand ab
+//   gun     Sofort-Treffer bis zur ersten Wand, Magazin mit Nachladen
+//   mortar  Leertaste halten schiebt den Zielkreis hinaus, loslassen sprengt dort
+//   zap     Leertaste halten trifft alle Gegner im Umkreis, verbraucht Mana
+// `stats`: Balken in der Auswahl, 1 bis 5.
+const HULL = { health: 100, accel: 8, brake: 14, turn: 3.4, turret: 3.4 };
 export const VEHICLES = [
   {
+    ...HULL,
     id: 'prellbock',
     name: 'Prellbock',
-    hint: 'Feuert Raketen, die an jeder Wand abprallen.',
-    health: 100,
-    speed: 2.2, // eher gemächlich
-    accel: 8, // so schnell kommt er auf Tempo
-    brake: 14,
-    turn: 3.4, // Wanne
-    turret: 3.4, // Turm, unabhängig von der Fahrtrichtung
+    hint: 'Raketen, die an jeder Wand abprallen.',
+    speed: 2.2,
     weapon: {
+      kind: 'rocket',
       name: 'Rakete',
       speed: 5, // mittelschnell
       damage: 34, // drei Treffer kosten ein Leben
       cooldown: 1.5, // so lange dauert das Nachladen
       life: 3.8, // dann verpufft sie
     },
-    // für die Balken in der Auswahl, 1 bis 5
-    stats: { tempo: 2, panzer: 3, feuer: 2 },
+    stats: { tempo: 2, reichweite: 4, wucht: 3 },
+  },
+  {
+    ...HULL,
+    id: 'kimme',
+    name: 'Kimme',
+    hint: 'Schnelle Schüsse, die sofort treffen. Reichen 8 Felder weit, 6 Schuss pro Magazin.',
+    speed: 2.2,
+    weapon: {
+      kind: 'gun',
+      name: 'Pistole',
+      damage: 12,
+      interval: 0.3, // zwischen zwei Schüssen
+      magazine: 6,
+      reload: 2, // ist das Magazin leer, so lange nachladen
+      range: 8,
+    },
+    stats: { tempo: 2, reichweite: 3, wucht: 2 },
+  },
+  {
+    ...HULL,
+    id: 'boeller',
+    name: 'Böller',
+    hint: 'Leertaste halten schiebt den Zielkreis hinaus, loslassen sprengt dort. Geht durch Wände und trifft auch dich.',
+    speed: 2,
+    weapon: {
+      kind: 'mortar',
+      name: 'Bombe',
+      charge: 4, // so schnell wandert der Zielkreis hinaus
+      range: 9,
+      radius: 1.3,
+      damage: 50, // in der Mitte
+      edge: 20, // am Rand
+      cooldown: 2.5,
+    },
+    stats: { tempo: 1, reichweite: 5, wucht: 5 },
+  },
+  {
+    ...HULL,
+    id: 'zitteraal',
+    name: 'Zitteraal',
+    hint: 'Schnell. Leertaste halten trifft alle Gegner in der Nähe mit Blitzen, solange Mana da ist.',
+    speed: 3,
+    weapon: {
+      kind: 'zap',
+      name: 'Blitze',
+      radius: 2.2,
+      damage: 6, // je Blitz und Gegner
+      pulse: 1 / 6, // so oft blitzt es, also 36 Schaden pro Sekunde
+      drain: 3, // volles Mana reicht so lange
+      refill: 6, // von leer auf voll
+      rest: 0.5, // erst nach dieser Pause lädt es wieder auf
+    },
+    stats: { tempo: 4, reichweite: 1, wucht: 4 },
   },
 ];
 
@@ -64,7 +119,6 @@ export const BOT_NAMES = ['Blechbüchse', 'Rostlaube', 'Klapperkiste', 'Schrotti
 export const SETTINGS = [
   { key: 'length', label: 'Rundendauer', options: ['1 min', '2 min', '3 min', '5 min'], values: [60, 120, 180, 300], normal: 2 },
   { key: 'target', label: 'Punkte zum Sieg', options: ['1', '2', '3', '4', '5'], values: [1, 2, 3, 4, 5], normal: 2 },
-  { key: 'arena', label: 'Arena', options: ['Klassik'], values: [0], normal: 0 },
   { key: 'bots', label: 'Freie Plätze', options: ['leer lassen', 'mit Bots füllen'], values: [false, true], normal: 1 },
 ];
 export const DEFAULT_LEVELS = SETTINGS.map((setting) => setting.normal);
@@ -87,7 +141,6 @@ export function rulesFor(levels) {
   return {
     seconds: value.length,
     target: value.target,
-    arena: value.arena,
     bots: value.bots,
   };
 }

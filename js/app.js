@@ -48,7 +48,7 @@ let invite = cleanCode(params.get('raum'));
 // ---------- Vorschau auf der Startseite: vier Bots ----------
 
 function createDemo() {
-  const host = createHost({ autoRestart: true, levels: [1, 4, 0, 1] });
+  const host = createHost({ autoRestart: true, levels: [1, 4, 1] });
   const loop = createLoopback(host, now);
   let client = null;
   const link = loop.connect('vorschau', (msg) => client.receive(msg, now()));
@@ -71,17 +71,36 @@ const MARKS = {
   bar: '<rect x="-.075" y="-.03" width=".15" height=".06"/>',
   star: '<path d="M0-.08.02-.025.077-.025.031.01.048.065 0 .032-.048.065-.031.01-.077-.025-.02-.025z"/>',
 };
-function tankSvg(slot, { faded = false } = {}) {
+const kindOfVehicle = (index) => VEHICLES[cleanVehicle(index)].weapon.kind;
+const OCTAGON = Array.from({ length: 8 }, (_, i) => {
+  const th = (i / 8) * Math.PI * 2 + Math.PI / 8;
+  return `${(Math.cos(th) * 0.25).toFixed(3)},${(Math.sin(th) * 0.25).toFixed(3)}`;
+}).join(' ');
+function tankSvg(slot, { faded = false, vehicle = 0 } = {}) {
   const look = COLORS[slot] || COLORS[0];
   const body = faded ? '#3b4049' : look.color;
   const deep = faded ? '#262a31' : look.deep;
   const light = faded ? '#4a505b' : look.light;
-  return `<svg viewBox="-.66 -.66 1.32 1.32" aria-hidden="true"><g transform="rotate(-90)">`
+  const kind = kindOfVehicle(vehicle);
+  let turret;
+  if (kind === 'gun') {
+    turret = '<rect x=".05" y="-.077" width=".66" height=".054" rx=".02" fill="#3a3f48"/><rect x=".05" y=".023" width=".66" height=".054" rx=".02" fill="#3a3f48"/>'
+      + `<rect x="-.17" y="-.16" width=".34" height=".32" rx=".07" fill="${light}" stroke="${deep}" stroke-width=".04"/>`;
+  } else if (kind === 'mortar') {
+    turret = '<rect x=".04" y="-.1" width=".4" height=".2" rx=".04" fill="#3a3f48"/><rect x=".36" y="-.135" width=".12" height=".27" rx=".04" fill="#262a31"/>'
+      + `<polygon points="${OCTAGON}" fill="${light}" stroke="${deep}" stroke-width=".04"/>`;
+  } else if (kind === 'zap') {
+    turret = `<rect x=".2" y="-.03" width=".16" height=".06" rx=".02" fill="#3a3f48"/><circle r=".23" fill="${faded ? '#3b3632' : '#8a5a2b'}"/>`
+      + `<circle r=".2" fill="none" stroke="${faded ? '#25211e' : '#d49a5a'}" stroke-width=".035"/><circle r=".15" fill="none" stroke="${faded ? '#25211e' : '#d49a5a'}" stroke-width=".035"/>`
+      + `<circle r=".1" fill="${light}" stroke="${deep}" stroke-width=".03"/>`;
+  } else {
+    turret = `<rect x=".04" y="-.06" width=".56" height=".12" rx=".03" fill="#3a3f48"/><circle r=".21" fill="${light}" stroke="${deep}" stroke-width=".04"/>`;
+  }
+  const mark = faded ? '' : `<g fill="${deep}" transform="scale(${kind === 'zap' ? 0.67 : kind === 'mortar' ? 1.2 : 1})">${MARKS[look.mark]}</g>`;
+  return `<svg viewBox="-.7 -.7 1.4 1.4" aria-hidden="true"><g transform="rotate(-90)">`
     + '<rect x="-.44" y="-.4" width=".88" height=".2" rx=".07" fill="#2b2e34"/><rect x="-.44" y=".2" width=".88" height=".2" rx=".07" fill="#2b2e34"/>'
     + `<rect x="-.37" y="-.25" width=".74" height=".5" rx=".08" fill="${body}" stroke="${deep}" stroke-width=".04"/>`
-    + '<rect x=".04" y="-.06" width=".56" height=".12" rx=".03" fill="#3a3f48"/>'
-    + `<circle r=".21" fill="${light}" stroke="${deep}" stroke-width=".04"/>`
-    + `<g fill="${deep}">${faded ? '' : MARKS[look.mark]}</g></g></svg>`;
+    + `${turret}${mark}</g></svg>`;
 }
 
 // ---------- Raum betreten und verlassen ----------
@@ -97,7 +116,7 @@ function setUrl(code) {
 
 function savedLevels() {
   try {
-    return JSON.parse(load(localStorage, 'tankwar-levels') || 'null');
+    return JSON.parse(load(localStorage, 'tankwar-settings') || 'null');
   } catch {
     return null;
   }
@@ -255,13 +274,13 @@ $('#options').innerHTML = SETTINGS.map((row) => `<div class="opt" role="radiogro
 $('#options').addEventListener('change', (event) => {
   if (!session || !session.host || !event.target.name.startsWith('opt-')) return;
   session.host.setLevel(event.target.name.slice(4), Number(event.target.value));
-  save(localStorage, 'tankwar-levels', JSON.stringify(session.host.levels));
+  save(localStorage, 'tankwar-settings', JSON.stringify(session.host.levels));
 });
 
 const bar = (n) => `<span class="bar">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}</span>`;
 $('#vehicles').innerHTML = VEHICLES.map((v, index) => `<button type="button" class="vehicle" role="radio" data-index="${index}" aria-checked="false">`
-  + `${tankSvg(0)}<span class="name">${v.name}</span><span class="hint">${v.hint}</span>`
-  + `<span class="stats"><span>Tempo${bar(v.stats.tempo)}</span><span>Panzer${bar(v.stats.panzer)}</span><span>Feuer${bar(v.stats.feuer)}</span></span></button>`).join('');
+  + `${tankSvg(0, { vehicle: index })}<span class="name">${v.name}<small>${v.weapon.name}</small></span><span class="hint">${v.hint}</span>`
+  + `<span class="stats"><span>Tempo${bar(v.stats.tempo)}</span><span>Reichweite${bar(v.stats.reichweite)}</span><span>Wucht${bar(v.stats.wucht)}</span></span></button>`).join('');
 $('#vehicles').addEventListener('click', (event) => {
   const button = event.target.closest('.vehicle');
   if (!button || !session) return;
@@ -373,14 +392,17 @@ function updateRoom(view) {
     const empty = info.kind === 'free' && !bots && !over;
     const tag = mine ? 'du' : info.kind === 'free' ? (bots ? 'Bot' : '') : '';
     let state;
-    if (over) state = `<span class="pts">${view.players[slot].points}<small>${view.players[slot].kills} Abschüsse</small></span>`;
+    const kills = view.players[slot].kills;
+    if (over) state = `<span class="pts">${view.players[slot].points}<small>${kills} ${kills === 1 ? 'Abschuss' : 'Abschüsse'}</small></span>`;
     else if (empty) state = '<span class="state">frei</span>';
     else if (info.kind === 'human' && !info.online) state = '<span class="state">getrennt</span>';
     else if (info.kind === 'human' && isHost && !mine) state = `<span class="state">${session.net && session.net.isDirect(info.id) ? 'direkt verbunden' : 'über Vermittler'}</span>`;
     else if (info.kind === 'human') state = '<span class="state">bereit</span>';
     else state = '<span class="state">fährt mit</span>';
     const name = empty ? 'Freier Platz' : esc(info.name);
-    return `<li class="${empty ? 'empty' : ''}${mine ? ' me' : ''}">${tankSvg(slot, { faded: empty })}<span class="who">${name}${tag ? `<small>${tag}</small>` : ''}</span>${state}</li>`;
+    const vehicle = over ? view.players[slot].vehicle : info.vehicle;
+    const ride = empty ? '' : `<em>${VEHICLES[cleanVehicle(vehicle)].name}</em>`;
+    return `<li class="${empty ? 'empty' : ''}${mine ? ' me' : ''}">${tankSvg(slot, { faded: empty, vehicle })}<span class="who">${name}${tag ? `<small>${tag}</small>` : ''}${ride}</span>${state}</li>`;
   }).join('');
   put('slots', rows, (v) => {
     $('#slots').innerHTML = v;
@@ -402,8 +424,9 @@ function updateRoom(view) {
   const chosen = mySlot ? mySlot.vehicle : client.vehicle;
   put('vehicle', `${chosen}|${client.slot}`, () => {
     for (const button of document.querySelectorAll('.vehicle')) {
-      button.setAttribute('aria-checked', String(Number(button.dataset.index) === chosen));
-      button.querySelector('svg').outerHTML = tankSvg(Math.max(0, client.slot));
+      const index = Number(button.dataset.index);
+      button.setAttribute('aria-checked', String(index === chosen));
+      button.querySelector('svg').outerHTML = tankSvg(Math.max(0, client.slot), { vehicle: index });
     }
   });
 
@@ -466,6 +489,7 @@ function hudEvent(e, view) {
   const out = e.item <= 0;
   const verb = e.by === view.slot ? 'erwischst' : 'erwischt';
   let text = `${who(by)} ${verb} ${e.of === view.slot ? 'dich' : who(of)}`;
+  if (e.by === e.of) text = e.of === view.slot ? 'Du sprengst dich selbst' : `${who(of)} sprengt sich selbst`;
   if (out) text += e.of === view.slot ? '. Du bist raus' : `. ${who(of)} ist raus`;
   addFeed(text);
 }
@@ -486,7 +510,7 @@ function updateHud(view, t) {
     const cls = frac > 0.6 ? '' : frac > 0.3 ? 'mid' : 'low';
     const lives = Array.from({ length: LIVES }, (_, i) => `<i class="${i < p.lives ? '' : 'gone'}"></i>`).join('');
     const tag = p.mine ? 'du' : p.kind === 'free' ? 'Bot' : p.online ? '' : 'getrennt';
-    return `<div class="pcard${p.mine ? ' me' : ''}${p.lives <= 0 ? ' out' : ''}" style="--c:${COLORS[p.slot].color}">${tankSvg(p.slot, { faded: p.lives <= 0 })}`
+    return `<div class="pcard${p.mine ? ' me' : ''}${p.lives <= 0 ? ' out' : ''}" style="--c:${COLORS[p.slot].color}">${tankSvg(p.slot, { faded: p.lives <= 0, vehicle: p.vehicle })}`
       + `<div class="top"><span class="who">${esc(p.name)}</span>${tag ? `<span class="tag">${tag}</span>` : ''}<span class="lives">${lives}</span></div>`
       + `<div class="bottom"><span class="hp"><b class="${cls}" style="width:${Math.round(frac * 100)}%"></b></span><span class="pips">${pips(p.points, target)}</span></div></div>`;
   };
@@ -503,8 +527,8 @@ function updateHud(view, t) {
     $('#timer').textContent = text;
     $('#timer').classList.toggle('soon', soon === 'true');
   });
-  put('round', view.round, (v) => {
-    $('#round-label').textContent = `Runde ${v}`;
+  put('round', `Runde ${view.round} · ${view.arena.name}`, (v) => {
+    $('#round-label').textContent = v;
   });
 
   let conn = '';
@@ -562,7 +586,7 @@ function updateHud(view, t) {
       $('#count-num').textContent = v;
       $('#count-num').classList.toggle('go', v === 'Los!');
     });
-    put('count-round', `Runde ${view.round}`, (v) => {
+    put('count-round', `Runde ${view.round} · ${view.arena.name}`, (v) => {
       $('#count-round').textContent = v;
     });
     const others = field.length - (me && me.in ? 1 : 0);
@@ -585,7 +609,7 @@ function updateHud(view, t) {
     else if (winners.length === 1) title = winners[0] === view.slot ? 'Du holst die Runde' : `${esc(view.players[winners[0]].name)} holt die Runde`;
     else title = 'Unentschieden';
     const sorted = field.slice().sort((a, b) => b.points - a.points || b.kills - a.kills);
-    const list = sorted.map((p) => `<li class="${winners.includes(p.slot) ? 'win' : ''}">${tankSvg(p.slot)}<span class="who">${p.mine ? 'Du' : esc(p.name)}</span>`
+    const list = sorted.map((p) => `<li class="${winners.includes(p.slot) ? 'win' : ''}">${tankSvg(p.slot, { vehicle: p.vehicle })}<span class="who">${p.mine ? 'Du' : esc(p.name)}</span>`
       + `<span class="pips">${pips(p.points, target, winners.includes(p.slot))}</span></li>`).join('');
     let foot = `Nächste Runde in ${secsOf(view.ticksLeft)}`;
     if (champs.length === 1) foot = champs[0] === view.slot ? 'Du gewinnst das Spiel!' : `${namesOf(champs, view)} gewinnt das Spiel!`;

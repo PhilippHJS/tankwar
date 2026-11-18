@@ -2,15 +2,19 @@
 // verliert. Laufen nur beim Gastgeber und liefern dieselben Eingaben wie ein
 // Mensch.
 //
-// Ein Bot sucht sich den nächsten Gegner, rechnet alle paar Schritte ein paar
-// Schussrichtungen samt Abprallern durch und schießt, wenn eine trifft. Er
-// weicht Raketen aus, die auf ihn zufliegen, und fährt sonst über die Felder
-// auf seinen Gegner zu. Ein bisschen Ungenauigkeit ist Absicht.
+// Ein Bot sucht sich den nächsten Gegner, weicht Raketen aus, die auf ihn
+// zufliegen, und fährt über die Felder auf seinen Gegner zu oder hält Abstand.
+// Wie er zielt und schießt, hängt von seiner Waffe ab:
+//   Rakete  rechnet ein paar Schussrichtungen samt Abprallern durch
+//   Pistole schießt bei freier Sicht und in Reichweite
+//   Bombe   lädt auf, bis der Zielkreis beim Gegner ist, und hält Abstand
+//   Blitze  fährt ran und blitzt, solange Mana da ist
+// Ein bisschen Ungenauigkeit ist Absicht.
 
 import { solidAt } from './arenas.js';
 import { makeRng } from './rng.js';
-import { packInput, moveIndex, aimIndex, launchRocket, stepRocket, copyRocket, angleDiff, IDLE } from './physics.js';
-import { alive, vehicleOf, PHASE } from './sim.js';
+import { packInput, moveIndex, aimIndex, launchRocket, stepRocket, copyRocket, angleDiff, castRay, inZapReach, blastPoint, IDLE } from './physics.js';
+import { alive, vehicleOf, PHASE, EVENT } from './sim.js';
 import { TANK_R, ROCKET_R, DT } from './config.js';
 
 const NEIGHBORS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
@@ -38,12 +42,20 @@ function distanceField(arena, sx, sy) {
   return dist;
 }
 
+// Freie Sicht zwischen zwei Punkten?
+function clearLine(arena, ax, ay, bx, by) {
+  const d = Math.hypot(bx - ax, by - ay);
+  if (d < 1e-6) return true;
+  return castRay(arena, ax, ay, (bx - ax) / d, (by - ay) / d, d) >= d - TANK_R;
+}
+
 export function createBot(slot, seed) {
   const rng = makeRng((seed ^ Math.imul(slot + 1, 2654435761)) >>> 0);
   let target = -1;
   let retargetAt = 0;
   let planAt = 0;
-  let plan = null; // { angle, score }
+  let plan = null; // Rakete: { angle, score }
+  let noise = 0; // Zielfehler, wird alle paar Schritte neu gewürfelt
   let field = null;
   let fieldKey = '';
   let fieldAt = -1e9;
@@ -52,7 +64,8 @@ export function createBot(slot, seed) {
   let strafe = rng() < 0.5 ? 1 : -1;
   let strafeAt = 0;
   let last = { x: 0, y: 0, tick: 0 };
-  let calmUntil = 0;
+  let heardEvent = 0; // Ereignisse bis hierhin schon angesehen
+  let calmUntil = 0; // Bombe: kleine Denkpause nach jedem Wurf
   const probe = {};
 
   // Trifft eine Rakete in diese Richtung? Liefert die Schritte bis zum Treffer.
@@ -60,11 +73,10 @@ export function createBot(slot, seed) {
     const weapon = vehicleOf(me).weapon;
     const r = launchRocket(sim.arena, { x: me.tank.x, y: me.tank.y, a: angle }, weapon);
     const reach = TANK_R + ROCKET_R - 0.06;
-    const limit = Math.min(r.life, 130);
+    const limit = Math.min(r.life, 150);
     for (let i = 1; i <= limit; i += 1) {
       stepRocket(sim.arena, r);
       for (const foe of foes) {
-        // Wo der Gegner ungefähr sein wird, wenn er weiterfährt
         const t = Math.min(i, 40) * DT;
         const fx = foe.tank.x + Math.cos(foe.tank.h) * foe.tank.v * t;
         const fy = foe.tank.y + Math.sin(foe.tank.h) * foe.tank.v * t;
@@ -76,7 +88,7 @@ export function createBot(slot, seed) {
     return Infinity;
   }
 
-  function planShot(sim, me, foe, foes) {
+  function planRocket(sim, me, foe, foes) {
     const direct = Math.atan2(foe.tank.y - me.tank.y, foe.tank.x - me.tank.x);
     const tries = [direct, direct + 0.07, direct - 0.07];
     const spread = 26;
@@ -91,23 +103,35 @@ export function createBot(slot, seed) {
       const score = steps + turning * 0.8;
       if (!best || score < best.score) best = { angle, score };
     }
-    return best && best.score < 170 ? best : null;
+    return best && best.score < 190 ? best : null;
   }
 
-  // Fliegt eine gegnerische Rakete bald in diesen Panzer?
+  // Fliegt eine gegnerische Rakete bald in diesen Panzer, oder lädt jemand
+  // eine Bombe auf, deren Zielkreis ihn erwischen würde? Bots sehen nicht alles
+  // und reagieren nicht sofort, sonst wären sie kaum zu treffen.
   function threat(sim, me) {
+    for (const p of sim.players) {
+      if (p === me || !alive(p) || p.tank.ch <= 0) continue;
+      const w = vehicleOf(p).weapon;
+      const { x: cx, y: cy } = blastPoint(sim.arena, p.tank, p.tank.ch);
+      if (Math.hypot(me.tank.x - cx, me.tank.y - cy) < w.radius + 1.2 && rng() < 0.9) {
+        // weg von der Mitte des Kreises: wie eine Rakete, die quer dazu fliegt
+        return { i: 0, x: cx, y: cy, vx: -(me.tank.y - cy), vy: me.tank.x - cx };
+      }
+    }
     let soonest = null;
     const near = TANK_R + ROCKET_R + 0.3;
     for (const r of sim.rockets) {
       if (r.owner === me.slot) continue;
       if (Math.hypot(r.x - me.tank.x, r.y - me.tank.y) > 7) continue;
       copyRocket(r, probe);
-      for (let i = 1; i <= 34 && probe.life > 0; i += 1) {
+      for (let i = 1; i <= 40 && probe.life > 0; i += 1) {
         stepRocket(sim.arena, probe);
         const dx = me.tank.x - probe.x;
         const dy = me.tank.y - probe.y;
         if (dx * dx + dy * dy < near * near) {
-          if (!soonest || i < soonest.i) soonest = { i, x: probe.x, y: probe.y, vx: probe.vx, vy: probe.vy };
+          const seen = i > 8 && rng() < 0.7;
+          if (seen && (!soonest || i < soonest.i)) soonest = { i, x: probe.x, y: probe.y, vx: probe.vx, vy: probe.vy };
           break;
         }
       }
@@ -117,9 +141,30 @@ export function createBot(slot, seed) {
 
   function freeAhead(sim, x, y, dx, dy) {
     const len = Math.hypot(dx, dy) || 1;
-    const tx = Math.floor(x + (dx / len) * 0.9);
-    const ty = Math.floor(y + (dy / len) * 0.9);
-    return !solidAt(sim.arena, tx, ty);
+    return !solidAt(sim.arena, Math.floor(x + (dx / len) * 0.9), Math.floor(y + (dy / len) * 0.9));
+  }
+
+  // Nächstes Feld über die Abstände zum Gegner: näher heran oder weiter weg
+  function viaField(sim, tank, closer) {
+    const arena = sim.arena;
+    const tx = Math.floor(tank.x);
+    const ty = Math.floor(tank.y);
+    const here = field[ty * arena.W + tx];
+    let best = null;
+    let bestD = here < 0 ? (closer ? 1e9 : -1) : here;
+    for (const [ox, oy] of NEIGHBORS) {
+      const nx = tx + ox;
+      const ny = ty + oy;
+      if (solidAt(arena, nx, ny)) continue;
+      if (ox && oy && (solidAt(arena, tx + ox, ty) || solidAt(arena, tx, ty + oy))) continue;
+      const d = field[ny * arena.W + nx];
+      if (d < 0) continue;
+      if (closer ? d < bestD : d > bestD) {
+        bestD = d;
+        best = [nx + 0.5, ny + 0.5];
+      }
+    }
+    return best ? [best[0] - tank.x, best[1] - tank.y] : [0, 0];
   }
 
   function think(sim) {
@@ -128,14 +173,29 @@ export function createBot(slot, seed) {
     const t = sim.tick;
     const tank = me.tank;
     const arena = sim.arena;
+    const w = vehicleOf(me).weapon;
+    const playing = sim.phase === PHASE.PLAY;
     const foes = sim.players.filter((p) => p !== me && alive(p));
     if (!foes.length) return packInput(0, -1, false);
 
+    // Wer ihn gerade getroffen hat, wird zum Ziel
+    for (const e of sim.events) {
+      if (e.id <= heardEvent) continue;
+      heardEvent = e.id;
+      const blast = e.kind === EVENT.BLAST && Math.hypot(e.x - tank.x, e.y - tank.y) < e.item / 100 + TANK_R;
+      const hit = (e.kind === EVENT.HIT || e.kind === EVENT.ZAP) && e.of === slot;
+      if ((blast || hit) && e.by !== slot && foes.some((p) => p.slot === e.by) && rng() < 0.8) {
+        target = e.by;
+        retargetAt = t + 150 + rng.int(90);
+      }
+    }
     if (t >= retargetAt || !foes.some((p) => p.slot === target)) {
       let best = null;
       let bestD = Infinity;
       for (const p of foes) {
-        const d = Math.hypot(p.tank.x - tank.x, p.tank.y - tank.y) + (p.shield > 0 ? 6 : 0) + rng() * 2;
+        // Wer mit Bomben aus der Ferne wirft, wird bevorzugt gejagt, wie es Menschen auch tun
+        const lobber = vehicleOf(p).weapon.kind === 'mortar' ? 4 : 0;
+        const d = Math.hypot(p.tank.x - tank.x, p.tank.y - tank.y) + (p.shield > 0 ? 6 : 0) + rng() * 2 - lobber;
         if (d < bestD) {
           bestD = d;
           best = p;
@@ -146,25 +206,57 @@ export function createBot(slot, seed) {
     }
     const foe = sim.players[target];
     const direct = Math.atan2(foe.tank.y - tank.y, foe.tank.x - tank.x);
-
-    // ---------- Zielen und Schießen ----------
+    const far = Math.hypot(foe.tank.x - tank.x, foe.tank.y - tank.y);
     if (t >= planAt) {
       planAt = t + 12 + rng.int(16);
-      plan = sim.phase === PHASE.PLAY ? planShot(sim, me, foe, foes) : null;
-      if (plan) plan.angle += (rng() - 0.5) * 0.12; // nicht ganz perfekt
+      noise = rng() - 0.5;
+      plan = w.kind === 'rocket' && playing ? planRocket(sim, me, foe, foes) : null;
     }
-    const aimTo = plan ? plan.angle : direct;
-    const lined = Math.abs(angleDiff(aimTo, tank.a)) < 0.06;
-    // Nach jedem Schuss eine kleine Denkpause, sonst wären Bots zu treffsicher
-    const fire = Boolean(plan) && lined && tank.cd <= 0 && t >= calmUntil;
-    if (fire) calmUntil = t + 50 + rng.int(40);
+
+    // ---------- Zielen und Schießen, je nach Waffe ----------
+    // wish: 'near' heranfahren, 'keep' Abstand halten und kreisen, 'away' weg
+    let aimTo = direct;
+    let fire = false;
+    let wish = 'keep';
+    if (w.kind === 'rocket') {
+      if (plan) aimTo = plan.angle + noise * 0.12;
+      const lined = Math.abs(angleDiff(aimTo, tank.a)) < 0.06;
+      fire = Boolean(plan) && lined && tank.cd <= 0;
+      wish = far > 8 || !plan ? 'near' : 'keep';
+    } else if (w.kind === 'gun') {
+      aimTo = direct + noise * 0.26;
+      const sight = clearLine(arena, tank.x, tank.y, foe.tank.x, foe.tank.y);
+      const lined = Math.abs(angleDiff(aimTo, tank.a)) < 0.05;
+      fire = playing && sight && lined && far < w.range - 0.3;
+      wish = !sight || far > w.range - 1.5 ? 'near' : far < 3 ? 'away' : 'keep';
+    } else if (w.kind === 'mortar') {
+      // Dorthin, wo der Gegner gleich sein wird
+      const lead = 0.4 + noise * 0.3;
+      const lx = foe.tank.x + Math.cos(foe.tank.h) * foe.tank.v * lead;
+      const ly = foe.tank.y + Math.sin(foe.tank.h) * foe.tank.v * lead;
+      aimTo = Math.atan2(ly - tank.y, lx - tank.x) + noise * 0.2;
+      const want = Math.hypot(lx - tank.x, ly - tank.y) + noise * 1.6;
+      const safe = w.radius + TANK_R + 0.6;
+      const lined = Math.abs(angleDiff(aimTo, tank.a)) < 0.08;
+      if (playing && tank.cd <= 0 && (tank.ch > 0 || t >= calmUntil)) {
+        // halten, bis der Zielkreis weit genug draußen ist, dann loslassen
+        const goal = Math.min(w.range, Math.max(want, safe));
+        fire = tank.ch < goal || !lined || tank.ch < safe;
+        if (!fire) calmUntil = t + 40 + rng.int(80);
+      }
+      wish = far < 3 ? 'away' : far > 7 ? 'near' : 'keep';
+    } else if (w.kind === 'zap') {
+      const reach = foes.some((p) => inZapReach(arena, tank, w, p.tank.x, p.tank.y));
+      fire = playing && reach && !tank.lock && tank.mana > 0;
+      // leer gelaufen: kurz Abstand nehmen, bis wieder Mana da ist
+      wish = tank.lock || tank.mana < 0.25 ? (far < 4 ? 'away' : 'keep') : 'near';
+    }
 
     // ---------- Fahren ----------
     let dx = 0;
     let dy = 0;
-    const danger = sim.phase === PHASE.PLAY ? threat(sim, me) : null;
+    const danger = playing && (t % 6 === slot || sim.players.some((p) => p.tank.ch > 0)) ? threat(sim, me) : null;
     if (danger && (!dodge || t >= dodge.until)) {
-      // quer zur Flugrichtung, weg von der Bahn
       const vl = Math.hypot(danger.vx, danger.vy) || 1;
       let px = -danger.vy / vl;
       let py = danger.vx / vl;
@@ -186,8 +278,6 @@ export function createBot(slot, seed) {
       dx = stray.dx;
       dy = stray.dy;
     } else {
-      const tx = Math.floor(tank.x);
-      const ty = Math.floor(tank.y);
       const fx = Math.floor(foe.tank.x);
       const fy = Math.floor(foe.tank.y);
       const key = `${arena.index}:${fx}:${fy}`;
@@ -196,39 +286,17 @@ export function createBot(slot, seed) {
         fieldKey = key;
         fieldAt = t;
       }
-      const here = field[ty * arena.W + tx];
-      const far = Math.hypot(foe.tank.x - tank.x, foe.tank.y - tank.y);
       if (t >= strafeAt) {
         strafeAt = t + 50 + rng.int(80);
         if (rng() < 0.45) strafe = -strafe;
       }
-      if (here > 4 || (here > 2 && !plan) || far > 8) {
-        // näher heran, über das Feld mit dem kleinsten Abstand
-        let best = null;
-        let bestD = here < 0 ? 1e9 : here;
-        for (const [ox, oy] of NEIGHBORS) {
-          const nx = tx + ox;
-          const ny = ty + oy;
-          if (solidAt(arena, nx, ny)) continue;
-          if (ox && oy && (solidAt(arena, tx + ox, ty) || solidAt(arena, tx, ty + oy))) continue;
-          const d = field[ny * arena.W + nx];
-          if (d >= 0 && d < bestD) {
-            bestD = d;
-            best = [nx + 0.5, ny + 0.5];
-          }
-        }
-        if (best) {
-          dx = best[0] - tank.x;
-          dy = best[1] - tank.y;
-        }
-      } else {
-        // auf Abstand seitlich kreisen, mal hin, mal her
+      const close = w.kind === 'zap' ? 1.2 : 2;
+      if (wish === 'near' && far > close) [dx, dy] = viaField(sim, tank, true);
+      else if (wish === 'away') [dx, dy] = viaField(sim, tank, false);
+      else {
+        // seitlich kreisen, mal hin, mal her
         dx = -Math.sin(direct) * strafe;
         dy = Math.cos(direct) * strafe;
-        if (far < 3) {
-          dx -= Math.cos(direct) * 0.8;
-          dy -= Math.sin(direct) * 0.8;
-        }
         if (!freeAhead(sim, tank.x, tank.y, dx, dy)) {
           strafe = -strafe;
           dx = -dx;
@@ -240,7 +308,7 @@ export function createBot(slot, seed) {
     // Hängt er fest, kurz in eine zufällige freie Richtung
     if (t - last.tick >= 40) {
       const moved = Math.hypot(tank.x - last.x, tank.y - last.y);
-      if ((dx || dy) && moved < 0.15 && sim.phase === PHASE.PLAY) {
+      if ((dx || dy) && moved < 0.15 && playing) {
         const angle = rng() * Math.PI * 2;
         stray = { dx: Math.cos(angle), dy: Math.sin(angle), until: t + 30 };
       }

@@ -9,7 +9,7 @@ import { createSim, startMatch, backToLobby, stepSim, retire, alive, modeOf, PHA
 import { createBot } from './bots.js';
 import { MAX_INPUT } from './physics.js';
 import { randomSeed } from './rng.js';
-import { DT, TICK_RATE, PROTOCOL, MAX_PLAYERS, BOT_NAMES, SETTINGS, cleanLevels, rulesFor, cleanVehicle } from './config.js';
+import { DT, TICK_RATE, PROTOCOL, MAX_PLAYERS, BOT_NAMES, SETTINGS, VEHICLES, cleanLevels, rulesFor, cleanVehicle } from './config.js';
 
 const OFFLINE_MS = 5000; // ohne Lebenszeichen gilt ein Mitspieler als weg, ein Bot vertritt ihn
 const FREE_MS = 20000; // dann wird sein Platz außerhalb eines Spiels wieder frei
@@ -17,6 +17,7 @@ const QUEUE_MAX = 40;
 const RESTART_MS = 5000; // nur für die Vorschau: so lange nach Spielende geht es von vorn los
 
 const r4 = (v) => Math.round(v * 1e4) / 1e4;
+const randomVehicle = () => Math.floor(Math.random() * VEHICLES.length);
 const live = (phase) => phase === PHASE.COUNTDOWN || phase === PHASE.PLAY || phase === PHASE.RESULT;
 
 export function createHost({ levels, autoRestart = false, onChange = () => {} } = {}) {
@@ -25,7 +26,7 @@ export function createHost({ levels, autoRestart = false, onChange = () => {} } 
   // kind: 'human' oder 'free'. Freie Plätze fährt ein Bot, wenn Bots an sind.
   const slots = Array.from({ length: MAX_PLAYERS }, (_, index) => ({
     index, kind: 'free', id: null, name: BOT_NAMES[index], online: true, heard: 0,
-    queue: [], recvSeq: 0, ackSeq: 0, bot: createBot(index, index + 1), vehicle: 0,
+    queue: [], recvSeq: 0, ackSeq: 0, bot: createBot(index, index + 1), vehicle: randomVehicle(),
   }));
   const host = { sim, slots, levels: cleanLevels(levels) };
   const epoch = Math.floor(Math.random() * 2147483647) + 1; // erkennt, wenn der Gastgeber neu geladen hat
@@ -56,7 +57,7 @@ export function createHost({ levels, autoRestart = false, onChange = () => {} } 
     slot.name = BOT_NAMES[slot.index];
     slot.online = true;
     slot.queue.length = 0;
-    slot.vehicle = 0;
+    slot.vehicle = randomVehicle();
   }
 
   // Wer im nächsten Spiel oder in der nächsten Runde dabei ist
@@ -87,19 +88,21 @@ export function createHost({ levels, autoRestart = false, onChange = () => {} } 
       pe: sim.phaseEnd,
       rn: sim.round,
       o: sim.levels,
+      ar: sim.arena.index,
       // Je Panzer, Reihenfolge siehe P in client.js
       p: sim.players.map((p) => {
         const t = p.tank;
         return [
           p.in ? 1 : 0, r4(t.x), r4(t.y), r4(t.h), r4(t.a), r4(t.v), t.cd,
           p.hp, p.lives, p.dead, p.shield, p.points, p.tp, p.vehicle, p.kills,
+          t.ammo, r4(t.ch), r4(t.mana), t.zt, t.rest, t.lock, t.on,
         ];
       }),
       r: sim.rockets.map((r) => [r.id, r.owner, r.seq, r4(r.x), r4(r.y), r4(r.vx), r4(r.vy), r.life, r.b]),
       w: sim.winners,
       c: sim.champions,
       a: slots.map((slot) => slot.ackSeq),
-      e: sim.events.map((e) => [e.id, e.tick, e.kind, e.by, e.of, r4(e.x), r4(e.y), e.item]),
+      e: sim.events.map((e) => [e.id, e.tick, e.kind, e.by, e.of, r4(e.x), r4(e.y), e.item, r4(e.x2), r4(e.y2)]),
     };
   }
 
@@ -114,6 +117,8 @@ export function createHost({ levels, autoRestart = false, onChange = () => {} } 
     const seed = randomSeed();
     slots.forEach((slot) => {
       slot.bot = createBot(slot.index, seed);
+      // Bots fahren in jedem Spiel ein zufälliges Fahrzeug
+      if (slot.kind === 'free') slot.vehicle = randomVehicle();
     });
     startMatch(sim, seed, host.levels, host.lineup());
     overAt = 0;

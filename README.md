@@ -1,33 +1,31 @@
 # Tank War
 
-Panzerschlacht für bis zu vier im Browser, jeder am eigenen Rechner und ohne Anmeldung. Drei Leben pro Runde, Raketen prallen von jeder Wand ab, und wer zuletzt noch fährt, holt den Punkt.
-
-Bisher gibt es ein Fahrzeug und eine Arena. Die Auswahl im Raum ist schon für mehr ausgelegt.
+Panzerschlacht für bis zu vier im Browser, jeder am eigenen Rechner und ohne Anmeldung. Drei Leben pro Runde, vier Fahrzeuge mit ganz unterschiedlichen Waffen, fünf Arenen, und wer zuletzt noch fährt, holt den Punkt.
 
 ## So wird gespielt
 
 1. Seite öffnen, Namen eingeben, **Raum erstellen**.
 2. Den Einladungslink an bis zu drei Mitspieler schicken.
-3. Der Gastgeber stellt Rundendauer und Punkte zum Sieg ein und startet das Spiel. Freie Plätze können Bots übernehmen, alleine ausprobieren geht also auch.
+3. Jeder wählt im Raum sein Fahrzeug. Der Gastgeber stellt Rundendauer und Punkte zum Sieg ein und startet das Spiel. Freie Plätze können Bots mit zufälligem Fahrzeug übernehmen, alleine ausprobieren geht also auch.
 
 | Was | Tastatur | Gamepad |
 | --- | --- | --- |
 | Fahren | WASD | linker Stick oder Steuerkreuz |
 | Zielen | Pfeiltasten | rechter Stick |
-| Schießen | Leertaste, gedrückt halten feuert, sobald nachgeladen ist | A, RB oder RT |
+| Schießen | Leertaste, je nach Fahrzeug tippen oder halten | A, RB oder RT |
 
 Fahren und Zielen sind getrennt: Die Wanne fährt in die gewünschte Richtung, der Turm zeigt unabhängig davon aufs Ziel. Liegt die Richtung eher hinter dem Panzer, fährt er rückwärts, statt umständlich zu wenden.
 
-Ein Pfeil dreht den Turm in seine Richtung, bis er dort ankommt, dann bleibt er stehen. Zwei Pfeile zugleich zielen schräg dazwischen. Lässt man los, bleibt der Turm, wo er gerade ist, so lassen sich auch Winkel dazwischen einstellen. Eine gestrichelte Linie zeigt die Flugbahn bis zum ersten Abpraller, ein Balken unter dem eigenen Panzer das Nachladen.
+Ein Pfeil dreht den Turm in seine Richtung, bis er dort ankommt, dann bleibt er stehen. Zwei Pfeile zugleich zielen schräg dazwischen. Lässt man los, bleibt der Turm, wo er gerade ist, so lassen sich auch Winkel dazwischen einstellen. Eine gestrichelte Linie zeigt, wohin der Schuss geht, ein Balken unter dem eigenen Panzer Nachladen, Magazin oder Mana.
 
 Das Gerät des Gastgebers führt den Spielstand. Seine Seite muss offen bleiben, solange gespielt wird. Wer neu lädt oder kurz die Verbindung verliert, landet wieder auf seinem Platz, bis dahin fährt ein Bot für ihn.
 
 ## Regeln
 
-- Jeder hat pro Runde 3 Leben und eine Lebensleiste. Drei Treffer kosten ein Leben.
+- Jeder hat pro Runde 3 Leben und eine Lebensleiste. Ist sie leer, ist ein Leben weg.
 - Wer abgeschossen wird, ist 5 Sekunden raus und steigt dann am Startplatz wieder ein, der am weitesten von den anderen weg ist. Danach ist er 2 Sekunden unverwundbar.
-- Raketen fliegen mittelschnell, prallen von jeder Wand ab und verpuffen nach knapp 4 Sekunden. Nach jedem Schuss dauert das Nachladen 1,5 Sekunden.
-- Kein Eigenbeschuss: Die eigenen Raketen tun dem eigenen Panzer nichts, auch nach einem Abpraller nicht.
+- Kein Eigenbeschuss: Eigene Raketen, Schüsse und Blitze tun dem eigenen Panzer nichts. Einzige Ausnahme ist die Bombe des Böllers.
+- Gespielt wird auf fünf Arenen. Zu Beginn jedes Spiels wird ihre Reihenfolge gemischt, jede Runde kommt die nächste, nach der fünften geht es von vorn los.
 - Die Runde endet, wenn nur noch einer Leben hat. Erwischen sich die letzten beiden gleichzeitig, gewinnen beide.
 - Läuft die Zeit ab, gewinnt, wer die meisten Leben hat, bei Gleichstand, wer mehr Lebensleiste hat. Ist es dann immer noch gleich, gewinnen mehrere.
 - Jeder Rundensieger bekommt einen Punkt. Nach einer kurzen Ehrenrunde, in der man nur noch fahren kann, beginnt die nächste Runde. Wer die eingestellten Punkte erreicht, gewinnt das Spiel.
@@ -41,16 +39,24 @@ Der Gastgeber stellt sie im Raum ein, die Mitspieler sehen sie. Sie gelten ab de
 | --- | --- |
 | Rundendauer | 1, 2, **3** oder 5 Minuten |
 | Punkte zum Sieg | 1 bis 5, normal **3** |
-| Arena | **Klassik** |
 | Freie Plätze | leer lassen oder **mit Bots füllen** |
 
 ## Fahrzeuge
 
-| Fahrzeug | Waffe | Tempo | Leben | Schaden | Nachladen |
-| --- | --- | --- | --- | --- | --- |
-| Prellbock | Rakete, prallt ab (5 Felder/s) | 2,2 Felder/s | 100 | 34 | 1,5 s |
+Alle haben 100 Lebensleiste. Tempo in Feldern pro Sekunde, die Arenen sind 22 × 14 Felder groß.
 
-Neue Fahrzeuge kommen als Eintrag in `VEHICLES` in `js/config.js` dazu, neue Arenen als Raster in `js/arenas.js`.
+| Fahrzeug | Tempo | Waffe |
+| --- | --- | --- |
+| Prellbock | 2,2 | **Rakete**: fliegt 5 Felder/s, prallt von jeder Wand ab und verpufft nach 3,8 s. 34 Schaden, 1,5 s Nachladen. |
+| Kimme | 2,2 | **Pistole**: trifft sofort, bis zur ersten Wand, höchstens 8 Felder weit. 12 Schaden, alle 0,3 s ein Schuss, 6 Schuss pro Magazin, dann 2 s Nachladen. |
+| Böller | 2,0 | **Bombe**: Leertaste halten schiebt den Zielkreis mit 4 Feldern/s von der Mündung hinaus, bis 9 Felder weit. Loslassen sprengt dort sofort, auch hinter Wänden. 50 Schaden in der Mitte, 20 am Rand (Radius 1,3), trifft auch den eigenen Panzer. 2,5 s Nachladen. Den Zielkreis sehen alle. |
+| Zitteraal | 3,0 | **Blitze**: Leertaste halten trifft alle Gegner im Umkreis von 2,2 Feldern, die nicht hinter einer Wand stehen, sechsmal pro Sekunde mit je 6 Schaden. Volles Mana reicht für 3 s. Ist es leer, erst loslassen. Aufgeladen wird nach einer halben Sekunde Pause, von leer auf voll in 6 s. |
+
+Gedacht ist ein Kreislauf: Der Zitteraal schlägt den Böller aus der Nähe, der Böller holt alle hinter Deckung hervor, die Kimme erwischt den Zitteraal beim Anfahren, und der Prellbock schlägt die Kimme mit Schüssen über die Bande. Alle Werte stehen in `VEHICLES` in `js/config.js`, neue Fahrzeuge kommen dort dazu.
+
+## Arenen
+
+Klassik, Säulen, Bunker, Gassen und Festung, jede mit vier Startplätzen in den Ecken. Neue Arenen sind ein Raster in `js/arenas.js`.
 
 ## Technik
 
@@ -67,7 +73,7 @@ Eine statische Seite ohne Server und ohne Build-Schritt, aufgebaut wie Hatz.
 
 Der eigene Panzer wird bei jeder Eingabe sofort im eigenen Browser bewegt, ohne auf den Gastgeber zu warten. Dessen gültiger Stand kommt 60-mal pro Sekunde zurück und wird mit den noch unbestätigten Eingaben abgeglichen. Beide rechnen mit demselben Code, deshalb stimmt die Vorhersage praktisch immer.
 
-Eigene Schüsse fliegen sofort los. Sobald der Gastgeber die Rakete bestätigt, übernimmt seine Rakete, ohne Sprung. Raketen prallen nur an festen Wänden ab, deshalb rechnet jedes Gerät ihren Flug bis in die Gegenwart weiter. Die anderen Panzer laufen mit einer kleinen Verzögerung zwischen zwei bekannten Ständen, damit sie auch bei unruhiger Verbindung flüssig fahren.
+Eigene Schüsse gehen sofort los: Raketen fliegen, die Pistole zieht ihre Spur, die Bombe explodiert, der Zielkreis und das Mana laufen ohne Verzögerung mit. Ob getroffen wurde, entscheidet der Gastgeber. Sobald er eine Rakete bestätigt, übernimmt seine, ohne Sprung. Raketen prallen nur an festen Wänden ab, deshalb rechnet jedes Gerät ihren Flug bis in die Gegenwart weiter. Die anderen Panzer laufen mit einer kleinen Verzögerung zwischen zwei bekannten Ständen, damit sie auch bei unruhiger Verbindung flüssig fahren.
 
 ### Verbindung
 
@@ -81,7 +87,7 @@ GitHub Pages reicht: in den Einstellungen des Repositorys unter **Pages** als Qu
 
 ```
 npm install
-npm test            # Bewegung, Abpraller, Regeln, Bots, Abgleich über schlechte Leitungen
+npm test            # Bewegung, Waffen, Arenen, Regeln, Bots, Steuerung, Abgleich über schlechte Leitungen
 npm run test:e2e    # vier Browser spielen über lokale Vermittler, braucht Chrome
 ```
 

@@ -123,7 +123,7 @@ test('die Vorhersage trifft den Stand des Gastgebers, eigene Raketen werden best
 
 test('wer mitten im Spiel dazukommt, steigt mit der nächsten Runde ein', () => {
   // Bots aus, damit Plätze frei bleiben
-  const w = createWorld({ levels: [0, 2, 0, 0] });
+  const w = createWorld({ levels: [0, 2, 0] });
   const a = w.join('a');
   const b = w.join('b');
   w.run(1500);
@@ -145,7 +145,7 @@ test('wer mitten im Spiel dazukommt, steigt mit der nächsten Runde ein', () => 
 
 test('wer geht, scheidet ohne Bots aus, mit Bots fährt einer weiter', () => {
   for (const bots of [0, 1]) {
-    const w = createWorld({ levels: [0, 2, 0, bots] });
+    const w = createWorld({ levels: [0, 2, bots] });
     const a = w.join('a');
     const b = w.join('b');
     const c = w.join('c');
@@ -163,7 +163,7 @@ test('wer geht, scheidet ohne Bots aus, mit Bots fährt einer weiter', () => {
 });
 
 test('reißt die Verbindung ab, vertritt ein Bot und der Spieler kommt zurück auf seinen Platz', () => {
-  const w = createWorld({ levels: [0, 2, 0, 0] });
+  const w = createWorld({ levels: [0, 2, 0] });
   const a = w.join('a');
   const b = w.join('b');
   w.run(1500);

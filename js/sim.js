@@ -9,9 +9,9 @@
 // mehr Lebensleiste, sonst gewinnen mehrere. Jeder Sieger bekommt einen Punkt.
 // Gespielt wird, bis jemand die eingestellten Punkte erreicht.
 
-import { arenaOf } from './arenas.js';
+import { ARENAS, arenaOf } from './arenas.js';
 import { makeRng } from './rng.js';
-import { newTank, stepTank, launchRocket, stepRocket, MODE } from './physics.js';
+import { newTank, stepTank, launchRocket, stepRocket, gunRay, rayHitsCircle, blastPoint, blastDamage, inZapReach, MODE } from './physics.js';
 import {
   MAX_PLAYERS, TICK_RATE, LIVES, RESPAWN_TICKS, SHIELD_TICKS, COUNTDOWN_TICKS, RESULT_TICKS, EVENT_TICKS,
   TANK_R, ROCKET_R, VEHICLES, DEFAULT_LEVELS, DEFAULT_RULES, cleanLevels, rulesFor, cleanVehicle,
@@ -19,8 +19,9 @@ import {
 
 export const PHASE = { LOBBY: 0, COUNTDOWN: 1, PLAY: 2, RESULT: 3, OVER: 4 };
 // Treffer, Treffer auf den Schutz, Abschuss (item: verbleibende Leben),
-// Rakete verpufft, Wiedereinstieg
-export const EVENT = { HIT: 0, BLOCK: 1, DESTROY: 2, POP: 3, SPAWN: 4 };
+// Rakete verpufft, Wiedereinstieg, Pistolenschuss (von x, y bis x2, y2),
+// Bombe (item: Radius in Hundertsteln), Blitz (of: getroffen, item: Schaden)
+export const EVENT = { HIT: 0, BLOCK: 1, DESTROY: 2, POP: 3, SPAWN: 4, SHOT: 5, BLAST: 6, ZAP: 7 };
 
 export function createSim(count = MAX_PLAYERS) {
   return {
@@ -33,6 +34,7 @@ export function createSim(count = MAX_PLAYERS) {
     levels: DEFAULT_LEVELS.slice(),
     rules: DEFAULT_RULES,
     arena: arenaOf(0),
+    order: ARENAS.map((_, i) => i), // Reihenfolge der Arenen in diesem Spiel
     field: 0, // so viele waren zu Beginn der Runde dabei
     // in: spielt in dieser Runde mit; dead: Schritte bis zum Wiedereinstieg;
     // shield: Restzeit des Schutzes; outAt: Schritt, in dem das letzte Leben
@@ -61,8 +63,8 @@ export function modeOf(phase) {
   return -1;
 }
 
-function addEvent(sim, kind, by, of, x, y, item = 0) {
-  sim.events.push({ id: sim.nextEvent, tick: sim.tick, kind, by, of, x, y, item });
+function addEvent(sim, kind, by, of, x, y, item = 0, x2 = 0, y2 = 0) {
+  sim.events.push({ id: sim.nextEvent, tick: sim.tick, kind, by, of, x, y, item, x2, y2 });
   sim.nextEvent += 1;
 }
 
@@ -72,7 +74,7 @@ export function startMatch(sim, seed, levels, lineup) {
   sim.rng = makeRng(sim.seed);
   sim.levels = cleanLevels(levels);
   sim.rules = rulesFor(sim.levels);
-  sim.arena = arenaOf(sim.rules.arena);
+  sim.order = sim.rng.shuffle(ARENAS.map((_, i) => i));
   sim.round = 0;
   sim.champions = [];
   for (const p of sim.players) {
@@ -84,6 +86,7 @@ export function startMatch(sim, seed, levels, lineup) {
 
 export function nextRound(sim, lineup) {
   sim.round += 1;
+  sim.arena = arenaOf(sim.order[(sim.round - 1) % sim.order.length]);
   sim.phase = PHASE.COUNTDOWN;
   sim.phaseEnd = sim.tick + COUNTDOWN_TICKS;
   sim.rockets = [];
@@ -105,7 +108,7 @@ export function nextRound(sim, lineup) {
     p.vehicle = cleanVehicle(entry.vehicle);
     const spawn = sim.arena.spawns[order[seat % order.length]];
     seat += 1;
-    p.tank = newTank(spawn.x, spawn.y, spawn.h);
+    p.tank = newTank(spawn.x, spawn.y, spawn.h, vehicleOf(p));
     p.hp = vehicleOf(p).health;
     p.lives = LIVES;
     p.tp += 1;
@@ -153,12 +156,74 @@ function freeSpawn(sim, me) {
 function respawn(sim, p) {
   const spawn = freeSpawn(sim, p);
   const turret = p.tank.a;
-  p.tank = newTank(spawn.x, spawn.y, spawn.h);
+  p.tank = newTank(spawn.x, spawn.y, spawn.h, vehicleOf(p));
   p.tank.a = turret;
   p.hp = vehicleOf(p).health;
   p.shield = SHIELD_TICKS;
   p.tp += 1;
   addEvent(sim, EVENT.SPAWN, p.slot, p.slot, spawn.x, spawn.y);
+}
+
+// Schaden an einem Panzer. Schutz hält alles ab. `quiet`: keine eigene
+// Treffermeldung (die Bombe und die Blitze melden sich selbst).
+function hurt(sim, p, dmg, by, x, y, quiet = false) {
+  if (p.shield > 0) {
+    if (!quiet) addEvent(sim, EVENT.BLOCK, by, p.slot, x, y);
+    return false;
+  }
+  p.hp = Math.max(0, p.hp - dmg);
+  if (p.hp > 0) {
+    if (!quiet) addEvent(sim, EVENT.HIT, by, p.slot, x, y, dmg);
+    return true;
+  }
+  p.lives -= 1;
+  const shooter = sim.players[by];
+  if (shooter && shooter !== p) shooter.kills += 1;
+  addEvent(sim, EVENT.DESTROY, by, p.slot, p.tank.x, p.tank.y, p.lives);
+  if (p.lives > 0) p.dead = RESPAWN_TICKS;
+  else p.outAt = sim.tick;
+  return true;
+}
+
+function fireGun(sim, p, w) {
+  const ray = gunRay(sim.arena, p.tank, w.range);
+  // Getroffen wird, wer zuerst im Weg steht, gemessen ab der Mitte des Schützen
+  const offset = Math.hypot(ray.sx - p.tank.x, ray.sy - p.tank.y);
+  const total = offset + ray.len;
+  let target = null;
+  let at = total;
+  for (const q of sim.players) {
+    if (q === p || !alive(q)) continue;
+    const t = rayHitsCircle(p.tank.x, p.tank.y, ray.dx, ray.dy, total, q.tank.x, q.tank.y, TANK_R);
+    if (t < at) {
+      at = t;
+      target = q;
+    }
+  }
+  const end = Math.max(at, offset);
+  const ex = p.tank.x + ray.dx * end;
+  const ey = p.tank.y + ray.dy * end;
+  addEvent(sim, EVENT.SHOT, p.slot, target ? target.slot : -1, ray.sx, ray.sy, 0, ex, ey);
+  if (target) hurt(sim, target, w.damage, p.slot, ex, ey);
+}
+
+function fireMortar(sim, p, w, dist) {
+  const at = blastPoint(sim.arena, p.tank, dist);
+  addEvent(sim, EVENT.BLAST, p.slot, -1, at.x, at.y, Math.round(w.radius * 100));
+  // Trifft alle im Umkreis, durch Wände und auch den Schützen selbst
+  for (const q of sim.players) {
+    if (!alive(q)) continue;
+    const dmg = blastDamage(w, Math.hypot(q.tank.x - at.x, q.tank.y - at.y));
+    if (dmg > 0) hurt(sim, q, dmg, p.slot, q.tank.x, q.tank.y, true);
+  }
+}
+
+function fireZap(sim, p, w) {
+  for (const q of sim.players) {
+    if (q === p || !alive(q) || !inZapReach(sim.arena, p.tank, w, q.tank.x, q.tank.y)) continue;
+    addEvent(sim, EVENT.ZAP, p.slot, q.slot, q.tank.x, q.tank.y, q.shield > 0 ? 0 : w.damage);
+    hurt(sim, q, w.damage, p.slot, q.tank.x, q.tank.y, true);
+  }
 }
 
 function stepTanks(sim, inputs, mode) {
@@ -168,14 +233,22 @@ function stepTanks(sim, inputs, mode) {
     const others = [];
     for (const q of sim.players) if (q !== p && alive(q)) others.push(q.tank);
     const vehicle = vehicleOf(p);
+    const w = vehicle.weapon;
     for (const [code, seq] of list) {
-      if (!stepTank(sim.arena, p.tank, code, vehicle, mode, others)) continue;
-      const r = launchRocket(sim.arena, p.tank, vehicle.weapon);
-      r.id = sim.nextRocket;
-      r.owner = p.slot;
-      r.seq = seq || 0; // damit der Schütze seine vorausberechnete Rakete wiedererkennt
-      sim.nextRocket += 1;
-      sim.rockets.push(r);
+      if (!alive(p)) break; // die eigene Bombe kann den eigenen Panzer zerstören
+      const shot = stepTank(sim.arena, p.tank, code, vehicle, mode, others);
+      if (!shot) continue;
+      if (w.kind === 'gun') fireGun(sim, p, w);
+      else if (w.kind === 'mortar') fireMortar(sim, p, w, shot);
+      else if (w.kind === 'zap') fireZap(sim, p, w);
+      else {
+        const r = launchRocket(sim.arena, p.tank, w);
+        r.id = sim.nextRocket;
+        r.owner = p.slot;
+        r.seq = seq || 0; // damit der Schütze seine vorausberechnete Rakete wiedererkennt
+        sim.nextRocket += 1;
+        sim.rockets.push(r);
+      }
     }
   }
 }
@@ -192,22 +265,9 @@ function stepRockets(sim, damage) {
       const dy = p.tank.y - r.y;
       if (dx * dx + dy * dy >= hitDist * hitDist) continue;
       gone = true;
-      if (!damage || p.shield > 0) {
-        addEvent(sim, EVENT.BLOCK, r.owner, p.slot, r.x, r.y);
-        break;
-      }
       const shooter = sim.players[r.owner];
-      const dmg = shooter ? vehicleOf(shooter).weapon.damage : 0;
-      p.hp = Math.max(0, p.hp - dmg);
-      if (p.hp > 0) {
-        addEvent(sim, EVENT.HIT, r.owner, p.slot, r.x, r.y, dmg);
-        break;
-      }
-      p.lives -= 1;
-      if (shooter) shooter.kills += 1;
-      addEvent(sim, EVENT.DESTROY, r.owner, p.slot, p.tank.x, p.tank.y, p.lives);
-      if (p.lives > 0) p.dead = RESPAWN_TICKS;
-      else p.outAt = sim.tick;
+      if (!damage) addEvent(sim, EVENT.BLOCK, r.owner, p.slot, r.x, r.y);
+      else hurt(sim, p, shooter ? vehicleOf(shooter).weapon.damage : 0, r.owner, r.x, r.y);
       break;
     }
     if (gone) continue;

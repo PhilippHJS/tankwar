@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { createSim, startMatch, stepSim, retire, PHASE, EVENT, alive } from '../js/sim.js';
 import { packInput, aimIndex, newTank } from '../js/physics.js';
 import { createBot } from '../js/bots.js';
+import { ARENAS, arenaOf } from '../js/arenas.js';
 import {
   VEHICLES, LIVES, RESPAWN_TICKS, SHIELD_TICKS, COUNTDOWN_TICKS, RESULT_TICKS, TICK_RATE, DEFAULT_LEVELS,
 } from '../js/config.js';
@@ -12,11 +13,14 @@ const weapon = VEHICLES[0].weapon;
 const HITS_PER_LIFE = Math.ceil(VEHICLES[0].health / weapon.damage);
 const idle = () => [[], [], [], []];
 
-// Stufen: Dauer 1 min, Punkte 2, Arena Klassik, Bots an
-function setup(levels = [0, 1, 0, 1], slots = [0, 1]) {
+// Stufen: Dauer 1 min, Punkte 2, Bots an
+function setup(levels = [0, 1, 1], slots = [0, 1]) {
   const sim = createSim(4);
   const lineup = slots.map((slot) => ({ slot, vehicle: 0 }));
   startMatch(sim, 7, levels, lineup);
+  // Die Aufstellungen unten passen zur Arena Klassik
+  sim.order = [0];
+  sim.arena = arenaOf(0);
   while (sim.phase === PHASE.COUNTDOWN) stepSim(sim, idle(), lineup);
   return { sim, lineup };
 }
@@ -97,7 +101,7 @@ test('eigene Raketen treffen den eigenen Panzer nicht', () => {
 });
 
 test('wer als Letzter Leben hat, holt den Punkt, dann geht es mit der nächsten Runde weiter', () => {
-  const { sim, lineup } = setup([0, 1, 0, 1], [0, 1, 2]);
+  const { sim, lineup } = setup([0, 1, 1], [0, 1, 2]);
   sim.players[1].lives = 0;
   sim.players[2].lives = 0;
   stepSim(sim, idle(), lineup);
@@ -112,7 +116,7 @@ test('wer als Letzter Leben hat, holt den Punkt, dann geht es mit der nächsten 
 });
 
 test('wer die eingestellten Punkte erreicht, gewinnt das Spiel', () => {
-  const { sim, lineup } = setup([0, 1, 0, 1]); // 2 Punkte zum Sieg
+  const { sim, lineup } = setup([0, 1, 1]); // 2 Punkte zum Sieg
   for (let round = 1; round <= 2; round += 1) {
     while (sim.phase === PHASE.COUNTDOWN) stepSim(sim, idle(), lineup);
     sim.players[1].lives = 0;
@@ -132,7 +136,7 @@ test('nach Ablauf der Zeit: erst Leben, dann Lebensleiste, sonst mehrere Sieger'
     { lives: [2, 2, 1], hp: [68, 68, 100], winners: [0, 1] },
   ];
   for (const c of cases) {
-    const { sim, lineup } = setup([0, 1, 0, 1], [0, 1, 2]);
+    const { sim, lineup } = setup([0, 1, 1], [0, 1, 2]);
     c.lives.forEach((lives, slot) => {
       sim.players[slot].lives = lives;
       sim.players[slot].hp = c.hp[slot];
@@ -159,7 +163,7 @@ test('erwischen sich die letzten beiden gleichzeitig, gewinnen beide', () => {
 });
 
 test('wer mitten im Spiel geht, scheidet aus', () => {
-  const { sim, lineup } = setup([0, 1, 0, 0], [0, 1, 2]);
+  const { sim, lineup } = setup([0, 1, 0], [0, 1, 2]);
   retire(sim, 1);
   assert.equal(sim.players[1].lives, 0);
   stepSim(sim, idle(), lineup);
@@ -183,4 +187,30 @@ test('vier Bots spielen ein ganzes Spiel zu Ende', () => {
   assert.equal(sim.phase, PHASE.OVER);
   assert.ok(sim.champions.length >= 1);
   assert.ok(sim.players.some((p) => p.points >= 3));
+});
+
+test('jedes Spiel mischt die Arenen und spielt sie Runde für Runde im Kreis', () => {
+  const seen = new Set();
+  for (const seed of [1, 2, 3, 4, 5, 6]) {
+    const sim = createSim(4);
+    const lineup = [{ slot: 0, vehicle: 0 }, { slot: 1, vehicle: 0 }];
+    startMatch(sim, seed, [0, 4, 1], lineup);
+    assert.deepEqual(sim.order.slice().sort(), ARENAS.map((_, i) => i));
+    seen.add(sim.order.join());
+    const played = [];
+    for (let round = 1; round <= ARENAS.length + 2; round += 1) {
+      played.push(sim.arena.index);
+      sim.players[1].lives = 0;
+      while (sim.phase === PHASE.COUNTDOWN) stepSim(sim, idle(), lineup);
+      sim.players[1].lives = 0;
+      stepSim(sim, idle(), lineup);
+      sim.players[0].points = 0; // nie fertig werden
+      sim.champions = [];
+      for (let i = 0; i < RESULT_TICKS; i += 1) stepSim(sim, idle(), lineup);
+    }
+    assert.deepEqual(played, [...sim.order, sim.order[0], sim.order[1]]);
+    // Startplätze passen in jede Arena
+    assert.ok(sim.players[0].tank.x > 0);
+  }
+  assert.ok(seen.size > 1, 'Reihenfolge ist zufällig');
 });

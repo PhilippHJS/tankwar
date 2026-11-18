@@ -113,14 +113,16 @@ export function circleInWall(arena, x, y, r) {
 
 // x, y: Mitte; h: Richtung der Wanne; a: Richtung des Turms; v: Tempo entlang
 // der Wanne (negativ heißt rückwärts); cd: Schritte bis zum nächsten Schuss.
-export const newTank = (x, y, h) => ({ x, y, h, a: h, v: 0, cd: 0 });
+// Je nach Waffe: ammo Schuss im Magazin; ch Abstand des Zielkreises (0: lädt
+// nicht auf); mana 0 bis 1; zt Schritte bis zum nächsten Blitz; rest
+// Schritte ohne Blitzen; lock: Mana war leer, erst loslassen; on: blitzt gerade.
+export function newTank(x, y, h, vehicle = null) {
+  const weapon = vehicle ? vehicle.weapon : {};
+  return { x, y, h, a: h, v: 0, cd: 0, ammo: weapon.magazine || 0, ch: 0, mana: 1, zt: 0, rest: 0, lock: 0, on: 0 };
+}
+const TANK_KEYS = ['x', 'y', 'h', 'a', 'v', 'cd', 'ammo', 'ch', 'mana', 'zt', 'rest', 'lock', 'on'];
 export function copyTank(src, dst = {}) {
-  dst.x = src.x;
-  dst.y = src.y;
-  dst.h = src.h;
-  dst.a = src.a;
-  dst.v = src.v;
-  dst.cd = src.cd;
+  for (const key of TANK_KEYS) dst[key] = src[key];
   return dst;
 }
 
@@ -174,12 +176,126 @@ export function stepTank(arena, tank, code, vehicle, mode, others = []) {
     pushOutOfWalls(arena, tank, TANK_R);
   }
 
+  return useWeapon(arena, tank, vehicle.weapon, mode === MODE.PLAY, inputFire(code));
+}
+
+const ticks = (seconds) => Math.round(seconds * TICK_RATE);
+
+// Abzug. Gibt 0 zurück, wenn nichts passiert, sonst einen Schuss: bei der
+// Bombe den Abstand des Zielkreises, bei allen anderen 1.
+function useWeapon(arena, tank, w, armed, fire) {
   if (tank.cd > 0) tank.cd -= 1;
-  if (mode === MODE.PLAY && inputFire(code) && tank.cd <= 0) {
-    tank.cd = Math.round(vehicle.weapon.cooldown * TICK_RATE);
-    return true;
+  if (w.kind === 'rocket') {
+    if (!armed || !fire || tank.cd > 0) return 0;
+    tank.cd = ticks(w.cooldown);
+    return 1;
   }
-  return false;
+  if (w.kind === 'gun') {
+    if (tank.cd <= 0 && tank.ammo <= 0) tank.ammo = w.magazine; // fertig nachgeladen
+    if (!armed || !fire || tank.cd > 0 || tank.ammo <= 0) return 0;
+    tank.ammo -= 1;
+    tank.cd = tank.ammo > 0 ? ticks(w.interval) : ticks(w.reload);
+    return 1;
+  }
+  if (w.kind === 'mortar') {
+    if (!armed) {
+      tank.ch = 0;
+      return 0;
+    }
+    if (fire) {
+      // Aufladen: Der Zielkreis wandert von der Mündung hinaus, höchstens bis
+      // zum Rand der Arena
+      if (tank.cd > 0) return 0;
+      const next = tank.ch > 0 ? Math.min(w.range, tank.ch + w.charge * DT) : BARREL;
+      const px = tank.x + Math.cos(tank.a) * next;
+      const py = tank.y + Math.sin(tank.a) * next;
+      if (px >= 1 && px <= arena.W - 1 && py >= 1 && py <= arena.H - 1) tank.ch = next;
+      else if (tank.ch <= 0) tank.ch = BARREL;
+      return 0;
+    }
+    if (tank.ch <= 0) return 0;
+    const dist = tank.ch;
+    tank.ch = 0;
+    tank.cd = ticks(w.cooldown);
+    return dist;
+  }
+  if (w.kind === 'zap') {
+    if (!fire) tank.lock = 0;
+    const zapping = armed && fire && !tank.lock && tank.mana > 0;
+    tank.on = zapping ? 1 : 0;
+    if (!zapping) {
+      tank.zt = 0;
+      tank.rest += 1;
+      if (tank.rest > ticks(w.rest)) tank.mana = Math.min(1, tank.mana + 1 / ticks(w.refill));
+      return 0;
+    }
+    tank.rest = 0;
+    tank.mana = Math.max(0, tank.mana - 1 / ticks(w.drain));
+    if (tank.mana <= 0) tank.lock = 1;
+    if (tank.zt > 0) {
+      tank.zt -= 1;
+      return 0;
+    }
+    tank.zt = ticks(w.pulse) - 1;
+    return 1;
+  }
+  return 0;
+}
+
+// Wie weit ein Strahl von x, y in Richtung dx, dy (Länge 1) kommt, bis er auf
+// eine Wand trifft, höchstens `max`.
+export function castRay(arena, x, y, dx, dy, max) {
+  const step = 0.04;
+  for (let d = step; d <= max; d += step) {
+    if (solidAt(arena, Math.floor(x + dx * d), Math.floor(y + dy * d))) return d - step;
+  }
+  return max;
+}
+
+// Schussbahn der Pistole: von der Mündung bis zur Wand oder zur Reichweite.
+// Liegt die Mündung schon in der Wand, endet der Schuss sofort.
+export function gunRay(arena, tank, range) {
+  const dx = Math.cos(tank.a);
+  const dy = Math.sin(tank.a);
+  const toMuzzle = castRay(arena, tank.x, tank.y, dx, dy, BARREL);
+  const sx = tank.x + dx * toMuzzle;
+  const sy = tank.y + dy * toMuzzle;
+  const len = toMuzzle < BARREL - 0.05 ? 0 : castRay(arena, sx, sy, dx, dy, range);
+  return { sx, sy, dx, dy, len };
+}
+
+// Wo ein Strahl einen Kreis zuerst trifft, Abstand vom Start, sonst Infinity
+export function rayHitsCircle(sx, sy, dx, dy, len, cx, cy, r) {
+  const ox = cx - sx;
+  const oy = cy - sy;
+  const along = ox * dx + oy * dy;
+  const side2 = ox * ox + oy * oy - along * along;
+  if (side2 > r * r) return Infinity;
+  const t = along - Math.sqrt(r * r - side2);
+  const hit = t < 0 ? (ox * ox + oy * oy <= r * r ? 0 : Infinity) : t;
+  return hit <= len ? hit : Infinity;
+}
+
+// Mitte der Explosion einer Bombe, `dist` Felder vor dem Panzer, im Feld
+export function blastPoint(arena, tank, dist) {
+  const x = Math.min(arena.W - 1, Math.max(1, tank.x + Math.cos(tank.a) * dist));
+  const y = Math.min(arena.H - 1, Math.max(1, tank.y + Math.sin(tank.a) * dist));
+  return { x, y };
+}
+
+// Schaden einer Bombe für einen Panzer in `d` Feldern Abstand zur Mitte, 0 außerhalb
+export function blastDamage(w, d) {
+  const reach = Math.max(0, d - TANK_R * 0.5);
+  if (reach > w.radius) return 0;
+  return Math.round(w.edge + (w.damage - w.edge) * (1 - reach / w.radius));
+}
+
+// Sieht der Zitteraal einen Gegner, ohne Wand dazwischen?
+export function inZapReach(arena, tank, w, x, y) {
+  const d = Math.hypot(x - tank.x, y - tank.y);
+  if (d > w.radius + TANK_R * 0.5) return false;
+  if (d < 1e-6) return true;
+  return castRay(arena, tank.x, tank.y, (x - tank.x) / d, (y - tank.y) / d, d) >= d - TANK_R;
 }
 
 // ---------- Raketen ----------
