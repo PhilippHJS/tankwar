@@ -5,6 +5,7 @@ import { createHost, createLoopback } from './host.js';
 import { createClient } from './client.js';
 import { createRenderer } from './render.js';
 import { createControls } from './input.js';
+import { createMusic } from './music.js';
 import { createHostNet, createGuestNet, makeRoomCode, cleanCode, makeId, supported, DEFAULT_RELAYS } from './net.js';
 import { PHASE, EVENT } from './sim.js';
 import { packInput, moveIndex, aimIndex } from './physics.js';
@@ -41,6 +42,19 @@ const myVehicle = () => cleanVehicle(Number(load(localStorage, 'tankwar-vehicle'
 const canvas = $('#stage');
 const renderer = createRenderer(canvas);
 const controls = createControls(window);
+
+// Menümusik aus audio/menu.mp3, falls vorhanden. Der Knopf erscheint nur dann.
+function showMusicButton() {
+  const button = $('#b-music');
+  const off = music.muted();
+  button.textContent = off ? 'Musik: aus' : 'Musik: an';
+  button.setAttribute('aria-pressed', String(!off));
+  button.hidden = !music.available() || document.body.dataset.screen === 'game';
+}
+const music = createMusic({ muted: load(localStorage, 'tankwar-music') === 'aus', onChange: () => showMusicButton() });
+$('#b-music').addEventListener('click', () => {
+  save(localStorage, 'tankwar-music', music.toggle() ? 'aus' : 'an');
+});
 
 let session = null; // { role, code, host, client, net, status, since }
 let invite = cleanCode(params.get('raum'));
@@ -693,6 +707,8 @@ function drawFrame(t) {
     $('#hud').hidden = v !== 'game';
     controls.setEnabled(v === 'game');
     if (v === 'room') $('#room').scrollTop = 0;
+    music.setMenu(v !== 'game');
+    showMusicButton();
     if (v === 'game' && document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
     if (v !== 'game') {
       $('#count').hidden = true;
@@ -755,6 +771,7 @@ window.__tankwar = {
   debug,
   view: () => (session ? session.client.view(now()) : null),
   tools: { packInput, moveIndex, aimIndex },
+  music,
 };
 
 requestAnimationFrame(frame);

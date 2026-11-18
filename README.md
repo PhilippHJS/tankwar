@@ -70,7 +70,7 @@ Eine statische Seite ohne Server und ohne Build-Schritt, aufgebaut wie Hatz.
 - `js/physics.js`, `js/sim.js`, `js/bots.js`: Bewegung, Regeln und Bots, ohne Browser-Abhängigkeiten
 - `js/host.js`, `js/client.js`: Gastgeber und die Sicht eines Geräts auf das Spiel
 - `js/net.js`: Verbindung zwischen den Geräten und Verschlüsselung
-- `js/render.js`, `js/input.js`, `js/app.js`: Darstellung, Steuerung, Oberfläche
+- `js/render.js`, `js/input.js`, `js/music.js`, `js/app.js`: Darstellung, Steuerung, Menümusik, Oberfläche
 
 ### Warum sich die Steuerung direkt anfühlt
 
@@ -81,6 +81,10 @@ Eigene Schüsse gehen sofort los: Raketen fliegen, die Pistole zieht ihre Spur, 
 ### Verbindung
 
 Wie bei Hatz: Die Geräte finden sich über vier öffentliche, kostenlose MQTT-Vermittler und bauen dann eine direkte Leitung (WebRTC) auf. Klappt das nicht, läuft das Spiel über die Vermittler weiter, nur etwas träger. Dort ist alles verschlüsselt (AES-GCM), Schlüssel und Kanalname entstehen aus dem Raumcode.
+
+## Musik
+
+Liegt eine Datei `audio/menu.mp3` im Repository, läuft sie auf der Startseite und im Raum als Menümusik in einer nahtlosen Schleife. Beim Wechsel ins Spiel blendet sie sich aus, danach wieder ein. Oben rechts lässt sie sich stummschalten, der Browser merkt sich das. Fehlt die Datei, bleibt es still und der Knopf erscheint nicht. Das Repository und die Seite sind öffentlich, dort sollte also nur Musik liegen, die öffentlich weitergegeben werden darf.
 
 ## Online stellen
 

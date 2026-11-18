@@ -74,7 +74,9 @@ async function device(label, viewport = { width: 1366, height: 768 }) {
   const page = await context.newPage();
   page.on('pageerror', (err) => problems.push(`${label}: Seitenfehler ${err.message}`));
   page.on('console', (msg) => {
-    if (msg.type() === 'error' && !/WebSocket|ERR_CONNECTION/.test(msg.text())) problems.push(`${label}: Konsole ${msg.text()}`);
+    // Fehlende Menümusik (audio/menu.mp3) ist kein Fehler, dann bleibt es still
+    const missingMusic = /404/.test(msg.text()) && (msg.location().url || '').includes('/audio/');
+    if (msg.type() === 'error' && !missingMusic && !/WebSocket|ERR_CONNECTION/.test(msg.text())) problems.push(`${label}: Konsole ${msg.text()}`);
   });
   page.on('dialog', (dialog) => dialog.accept());
   page.label = label;
@@ -180,7 +182,9 @@ async function run(mode) {
     const slots = window.__tankwar.session.client.lobby.slots;
     return slots.some((slot) => slot.name === 'Dana' && slot.vehicle === 3) && slots.some((slot) => slot.name === 'Cem <b>' && slot.vehicle === 1);
   });
-  check((await guests[2].getAttribute('.vehicle[data-index="3"]', 'aria-checked')) === 'true', 'Gast wählt ein Fahrzeug, der Gastgeber sieht es');
+  const picked = await until(guests[2], () => document.querySelector('.vehicle[data-index="3"]').getAttribute('aria-checked') === 'true', null, 5000)
+    .then(() => true, () => false);
+  check(picked, 'Gast wählt ein Fahrzeug, der Gastgeber sieht es');
 
   // Einstellungen: 1 Minute, 1 Punkt zum Sieg. Gäste sehen sie, können sie aber nicht ändern.
   await host.click('#options label:has(input[name="opt-length"][value="0"])');

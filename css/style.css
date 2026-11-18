@@ -393,3 +393,21 @@ fieldset:disabled .opt input:checked + span { opacity: 1; }
   #clock { min-width: 100px; padding: 4px 12px 6px; }
   #timer { font-size: 22px; }
 }
+
+/* ---------- Musik ---------- */
+
+#b-music {
+  position: fixed;
+  top: 14px; right: 18px;
+  z-index: 7;
+  padding: 8px 12px;
+  background: rgba(18, 21, 28, 0.8);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--text);
+}
+#b-music::before { content: '♪'; margin-right: 6px; color: var(--accent); }
+#b-music[aria-pressed='false'] { color: var(--muted); }
+#b-music[aria-pressed='false']::before { color: var(--muted); }
+#b-music:hover { background: rgba(30, 34, 44, 0.95); }
