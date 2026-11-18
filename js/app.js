@@ -44,13 +44,17 @@ const canvas = $('#stage');
 const renderer = createRenderer(canvas);
 const controls = createControls(window);
 
-// Menümusik aus audio/menu.mp3, falls vorhanden. Der Knopf erscheint nur dann.
+// Musik aus audio/menu.mp3 und audio/game.mp3, falls vorhanden. Der Schalter
+// erscheint nur, wo es auch Musik gibt: oben rechts im Menü, unten rechts im Spiel.
 function showMusicButton() {
-  const button = $('#b-music');
   const off = music.muted();
-  button.textContent = off ? 'Musik: aus' : 'Musik: an';
-  button.setAttribute('aria-pressed', String(!off));
-  button.hidden = !music.available() || document.body.dataset.screen === 'game';
+  const inGame = document.body.dataset.screen === 'game';
+  for (const button of [$('#b-music'), $('#b-music-game')]) {
+    button.textContent = off ? 'Musik: aus' : 'Musik: an';
+    button.setAttribute('aria-pressed', String(!off));
+  }
+  $('#b-music').hidden = !music.available('menu') || inGame;
+  $('#b-music-game').hidden = !music.available('game');
 }
 const music = createMusic({ muted: load(localStorage, 'tankwar-music') === 'aus', onChange: () => showMusicButton() });
 // Geräusche im Spiel, mit eigenem Schalter unten rechts
@@ -70,13 +74,16 @@ $('#b-sound').addEventListener('click', (event) => {
 let musicLocked = true;
 // Der Browser erlaubt Ton erst nach dem ersten Klick. Ist dieser Klick der auf
 // den Musikknopf, startet er die Musik, statt sie gleich wieder auszuschalten.
-$('#b-music').addEventListener('pointerdown', () => {
-  musicLocked = music.locked();
-}, { capture: true });
-$('#b-music').addEventListener('click', () => {
-  if (musicLocked && !music.muted()) return;
-  save(localStorage, 'tankwar-music', music.toggle() ? 'aus' : 'an');
-});
+for (const button of [$('#b-music'), $('#b-music-game')]) {
+  button.addEventListener('pointerdown', () => {
+    musicLocked = music.locked();
+  }, { capture: true });
+  button.addEventListener('click', (event) => {
+    event.currentTarget.blur(); // sonst würde die Leertaste ihn wieder umschalten
+    if (musicLocked && !music.muted()) return;
+    save(localStorage, 'tankwar-music', music.toggle() ? 'aus' : 'an');
+  });
+}
 
 let session = null; // { role, code, host, client, net, status, since }
 let invite = cleanCode(params.get('raum'));
@@ -731,7 +738,7 @@ function drawFrame(t) {
     $('#hud').hidden = v !== 'game';
     controls.setEnabled(v === 'game');
     if (v === 'room') $('#room').scrollTop = 0;
-    music.setMenu(v !== 'game');
+    music.setScene(v === 'game' ? 'game' : 'menu');
     showMusicButton();
     if (v === 'game' && document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
     if (v !== 'game') {

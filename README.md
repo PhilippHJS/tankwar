@@ -71,7 +71,7 @@ Eine statische Seite ohne Server und ohne Build-Schritt, aufgebaut wie Hatz.
 - `js/host.js`, `js/client.js`: Gastgeber und die Sicht eines Geräts auf das Spiel
 - `js/net.js`: Verbindung zwischen den Geräten und Verschlüsselung
 - `js/render.js`, `js/input.js`, `js/app.js`: Darstellung, Steuerung, Oberfläche
-- `js/sound.js`, `js/sfx.js`, `js/music.js`: Ton, Geräusche, Menümusik
+- `js/sound.js`, `js/sfx.js`, `js/music.js`: Ton, Geräusche, Musik
 
 ### Warum sich die Steuerung direkt anfühlt
 
@@ -89,7 +89,7 @@ Alle Geräusche entstehen im Browser, ohne Dateien, und sind bewusst sparsam: Sc
 
 ## Musik
 
-Liegt eine Datei `audio/menu.mp3` im Repository, läuft sie auf der Startseite und im Raum als Menümusik in einer nahtlosen Schleife. Beim Wechsel ins Spiel blendet sie sich aus, danach wieder ein. Oben rechts lässt sie sich stummschalten, der Browser merkt sich das. Fehlt die Datei, bleibt es still und der Knopf erscheint nicht. Das Repository und die Seite sind öffentlich, dort sollte also nur Musik liegen, die öffentlich weitergegeben werden darf.
+Liegt `audio/menu.mp3` im Repository, läuft sie auf der Startseite und im Raum, `audio/game.mp3` während des Spiels, etwas leiser. Beide laufen in einer nahtlosen Schleife, beim Wechsel wird übergeblendet. Der Schalter „Musik“ steht oben rechts im Menü und unten rechts im Spiel, der Browser merkt sich die Einstellung. Fehlt eine Datei, bleibt es an dieser Stelle still. Das Repository und die Seite sind öffentlich, dort sollte also nur Musik liegen, die öffentlich weitergegeben werden darf.
 
 ## Online stellen
 
