@@ -3,7 +3,7 @@
 
 import { createHost, createLoopback } from './host.js';
 import { createClient } from './client.js';
-import { createRenderer } from './render.js';
+import { createRenderer, drawTankShape } from './render.js';
 import { createControls } from './input.js';
 import { createMusic } from './music.js';
 import { createSfx } from './sfx.js';
@@ -104,46 +104,31 @@ let demoWanted = true;
 
 // ---------- Symbole ----------
 
-const MARKS = {
-  circle: '<circle r=".075"/>',
-  square: '<rect x="-.064" y="-.064" width=".128" height=".128"/>',
-  triangle: '<path d="M.083 0-.053.071-.053-.071z"/>',
-  diamond: '<path d="M.086 0 0 .086-.086 0 0-.086z"/>',
-  cross: '<path d="M-.075-.028h.15v.056h-.15zM-.028-.075h.056v.15h-.056z"/>',
-  ring: '<path fill-rule="evenodd" d="M-.075 0a.075.075 0 1 0 .15 0a.075.075 0 1 0-.15 0zM-.037 0a.037.037 0 1 1 .074 0a.037.037 0 1 1-.074 0z"/>',
-  bar: '<rect x="-.075" y="-.03" width=".15" height=".06"/>',
-  star: '<path d="M0-.08.02-.025.077-.025.031.01.048.065 0 .032-.048.065-.031.01-.077-.025-.02-.025z"/>',
-};
 const kindOfVehicle = (index) => VEHICLES[cleanVehicle(index)].weapon.kind;
-const OCTAGON = Array.from({ length: 8 }, (_, i) => {
-  const th = (i / 8) * Math.PI * 2 + Math.PI / 8;
-  return `${(Math.cos(th) * 0.25).toFixed(3)},${(Math.sin(th) * 0.25).toFixed(3)}`;
-}).join(' ');
-function tankSvg(slot, { faded = false, vehicle = 0 } = {}) {
-  const look = COLORS[slot] || COLORS[0];
-  const body = faded ? '#3b4049' : look.color;
-  const deep = faded ? '#262a31' : look.deep;
-  const light = faded ? '#4a505b' : look.light;
-  const kind = kindOfVehicle(vehicle);
-  let turret;
-  if (kind === 'gun') {
-    turret = '<rect x=".05" y="-.077" width=".66" height=".054" rx=".02" fill="#3a3f48"/><rect x=".05" y=".023" width=".66" height=".054" rx=".02" fill="#3a3f48"/>'
-      + `<rect x="-.17" y="-.16" width=".34" height=".32" rx=".07" fill="${light}" stroke="${deep}" stroke-width=".04"/>`;
-  } else if (kind === 'mortar') {
-    turret = '<rect x=".04" y="-.1" width=".4" height=".2" rx=".04" fill="#3a3f48"/><rect x=".36" y="-.135" width=".12" height=".27" rx=".04" fill="#262a31"/>'
-      + `<polygon points="${OCTAGON}" fill="${light}" stroke="${deep}" stroke-width=".04"/>`;
-  } else if (kind === 'zap') {
-    turret = `<rect x=".2" y="-.03" width=".16" height=".06" rx=".02" fill="#3a3f48"/><circle r=".23" fill="${faded ? '#3b3632' : '#8a5a2b'}"/>`
-      + `<circle r=".2" fill="none" stroke="${faded ? '#25211e' : '#d49a5a'}" stroke-width=".035"/><circle r=".15" fill="none" stroke="${faded ? '#25211e' : '#d49a5a'}" stroke-width=".035"/>`
-      + `<circle r=".1" fill="${light}" stroke="${deep}" stroke-width=".03"/>`;
-  } else {
-    turret = `<rect x=".04" y="-.06" width=".56" height=".12" rx=".03" fill="#3a3f48"/><circle r=".21" fill="${light}" stroke="${deep}" stroke-width=".04"/>`;
+const GRAY = { color: '#3b4049', deep: '#262a31', light: '#4a505b', mark: 'circle' };
+const icons = new Map();
+// Symbol eines Panzers für Listen und Karten, mit derselben Zeichnung wie im
+// Spiel, Bug nach oben. Einmal gemalt, dann aus dem Speicher.
+function tankIcon(slot, { faded = false, vehicle = 0 } = {}) {
+  const key = `${faded ? -1 : slot}|${cleanVehicle(vehicle)}`;
+  let url = icons.get(key);
+  if (!url) {
+    const px = 96;
+    const canvas = document.createElement('canvas');
+    canvas.width = px;
+    canvas.height = px;
+    const g = canvas.getContext('2d');
+    // Von hinten bis zur Laufspitze sind es gut 1,2 Felder, die Mitte rutscht
+    // deshalb etwas nach unten.
+    const scale = px / 1.3;
+    g.translate(px / 2, px / 2 + 0.12 * scale);
+    g.scale(scale, scale);
+    g.rotate(-Math.PI / 2);
+    drawTankShape(g, faded ? GRAY : COLORS[slot] || COLORS[0], 0, { kind: kindOfVehicle(vehicle), plain: faded });
+    url = canvas.toDataURL();
+    icons.set(key, url);
   }
-  const mark = faded ? '' : `<g fill="${deep}" transform="scale(${kind === 'zap' ? 0.67 : kind === 'mortar' ? 1.2 : 1})">${MARKS[look.mark]}</g>`;
-  return `<svg viewBox="-.7 -.7 1.4 1.4" aria-hidden="true"><g transform="rotate(-90)">`
-    + '<rect x="-.44" y="-.4" width=".88" height=".2" rx=".07" fill="#2b2e34"/><rect x="-.44" y=".2" width=".88" height=".2" rx=".07" fill="#2b2e34"/>'
-    + `<rect x="-.37" y="-.25" width=".74" height=".5" rx=".08" fill="${body}" stroke="${deep}" stroke-width=".04"/>`
-    + `${turret}${mark}</g></svg>`;
+  return `<img class="ticon" src="${url}" alt="">`;
 }
 
 // ---------- Raum betreten und verlassen ----------
@@ -322,7 +307,7 @@ $('#options').addEventListener('change', (event) => {
 
 const bar = (n) => `<span class="bar">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= n ? 'on' : ''}"></i>`).join('')}</span>`;
 $('#vehicles').innerHTML = VEHICLES.map((v, index) => `<button type="button" class="vehicle" role="radio" data-index="${index}" aria-checked="false">`
-  + `${tankSvg(0, { vehicle: index })}<span class="name">${v.name}<small>${v.weapon.name}</small></span><span class="hint">${v.hint}</span>`
+  + `${tankIcon(0, { vehicle: index })}<span class="name">${v.name}<small>${v.weapon.name}</small></span><span class="hint">${v.hint}</span>`
   + `<span class="stats"><span>Tempo${bar(v.stats.tempo)}</span><span>Reichweite${bar(v.stats.reichweite)}</span><span>Wucht${bar(v.stats.wucht)}</span></span></button>`).join('');
 $('#vehicles').addEventListener('click', (event) => {
   const button = event.target.closest('.vehicle');
@@ -445,7 +430,7 @@ function updateRoom(view) {
     const name = empty ? 'Freier Platz' : esc(info.name);
     const vehicle = over ? view.players[slot].vehicle : info.vehicle;
     const ride = empty ? '' : `<em>${VEHICLES[cleanVehicle(vehicle)].name}</em>`;
-    return `<li class="${empty ? 'empty' : ''}${mine ? ' me' : ''}">${tankSvg(slot, { faded: empty, vehicle })}<span class="who">${name}${tag ? `<small>${tag}</small>` : ''}${ride}</span>${state}</li>`;
+    return `<li class="${empty ? 'empty' : ''}${mine ? ' me' : ''}">${tankIcon(slot, { faded: empty, vehicle })}<span class="who">${name}${tag ? `<small>${tag}</small>` : ''}${ride}</span>${state}</li>`;
   }).join('');
   put('slots', rows, (v) => {
     $('#slots').innerHTML = v;
@@ -469,7 +454,7 @@ function updateRoom(view) {
     for (const button of document.querySelectorAll('.vehicle')) {
       const index = Number(button.dataset.index);
       button.setAttribute('aria-checked', String(index === chosen));
-      button.querySelector('svg').outerHTML = tankSvg(Math.max(0, client.slot), { vehicle: index });
+      button.querySelector('.ticon').outerHTML = tankIcon(Math.max(0, client.slot), { vehicle: index });
     }
   });
 
@@ -560,7 +545,7 @@ function updateHud(view, t) {
     const cls = frac > 0.6 ? '' : frac > 0.3 ? 'mid' : 'low';
     const lives = Array.from({ length: LIVES }, (_, i) => `<i class="${i < p.lives ? '' : 'gone'}"></i>`).join('');
     const tag = p.ghost ? 'Geist' : p.mine ? 'du' : p.kind === 'free' ? 'Bot' : p.online ? '' : 'getrennt';
-    return `<div class="pcard${p.mine ? ' me' : ''}${p.lives <= 0 ? ' out' : ''}" style="--c:${COLORS[p.slot].color}">${tankSvg(p.slot, { faded: p.lives <= 0, vehicle: p.vehicle })}`
+    return `<div class="pcard${p.mine ? ' me' : ''}${p.lives <= 0 ? ' out' : ''}" style="--c:${COLORS[p.slot].color}">${tankIcon(p.slot, { faded: p.lives <= 0, vehicle: p.vehicle })}`
       + `<div class="top"><span class="who">${esc(p.name)}</span>${tag ? `<span class="tag">${tag}</span>` : ''}<span class="lives">${lives}</span></div>`
       + `<div class="bottom"><span class="hp"><b class="${cls}" style="width:${Math.round(frac * 100)}%"></b></span><span class="pips">${pips(p.points, target)}</span></div></div>`;
   };
@@ -667,7 +652,7 @@ function updateHud(view, t) {
     else if (winners.length === 1) title = winners[0] === view.slot ? 'Du holst die Runde' : `${esc(view.players[winners[0]].name)} holt die Runde`;
     else title = 'Unentschieden';
     const sorted = field.slice().sort((a, b) => b.points - a.points || b.kills - a.kills);
-    const list = sorted.map((p) => `<li class="${winners.includes(p.slot) ? 'win' : ''}">${tankSvg(p.slot, { vehicle: p.vehicle })}<span class="who">${p.mine ? 'Du' : esc(p.name)}</span>`
+    const list = sorted.map((p) => `<li class="${winners.includes(p.slot) ? 'win' : ''}">${tankIcon(p.slot, { vehicle: p.vehicle })}<span class="who">${p.mine ? 'Du' : esc(p.name)}</span>`
       + `<span class="pips">${pips(p.points, target, winners.includes(p.slot))}</span></li>`).join('');
     let foot = `Nächste Runde in ${secsOf(view.ticksLeft)}`;
     if (champs.length === 1) foot = champs[0] === view.slot ? 'Du gewinnst das Spiel!' : `${namesOf(champs, view)} gewinnt das Spiel!`;

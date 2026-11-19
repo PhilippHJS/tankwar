@@ -63,139 +63,318 @@ export function markPath(ctx, mark, s) {
   }
 }
 
-// Ein Panzer in Feldern, Mitte bei 0,0, schon gedreht nach der Wanne.
-// `turret`: Turmwinkel relativ zur Wanne. Wird auch für die Symbole im Raum benutzt.
-export function drawTankShape(ctx, look, turret, { tread = 0, recoil = 0, wreck = false, flash = 0, kind = 'rocket' } = {}) {
-  const body = wreck ? '#4a4744' : look.color;
-  const deep = wreck ? '#24211f' : look.deep;
-  const light = wreck ? '#5e5a55' : look.light;
-  // Ketten
+// Wo die Ketten sitzen und wie breit sie sind, je Fahrzeug. Der Zitteraal
+// schwebt und hinterlässt keine Spuren.
+export const TRACKS = {
+  rocket: { y: 0.3, w: 0.22 },
+  gun: { y: 0.28, w: 0.13 },
+  mortar: { y: 0.31, w: 0.2 },
+  zap: null,
+};
+
+function polygon(ctx, points) {
+  ctx.beginPath();
+  points.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+  ctx.closePath();
+}
+
+const WEDGE = [[-0.38, -0.21], [0.12, -0.21], [0.44, -0.04], [0.44, 0.04], [0.12, 0.21], [-0.38, 0.21]];
+const OCTA_HULL = [[0.42, -0.17], [0.31, -0.28], [-0.31, -0.28], [-0.42, -0.17], [-0.42, 0.17], [-0.31, 0.28], [0.31, 0.28], [0.42, 0.17]];
+const HEX_TURRET = [[0.16, 0], [0.08, -0.14], [-0.1, -0.14], [-0.17, 0], [-0.1, 0.14], [0.08, 0.14]];
+const octagon = (r) => Array.from({ length: 8 }, (_, i) => {
+  const th = (i / 8) * TAU + Math.PI / 8;
+  return [Math.cos(th) * r, Math.sin(th) * r];
+});
+const OCTA_TURRET = octagon(0.24);
+
+// Umriss des ganzen Fahrzeugs, für Schatten und Trefferblitz
+export function tankOutline(ctx, kind) {
+  if (kind === 'zap') {
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 0.45, 0.38, 0, 0, TAU);
+  } else if (kind === 'gun') {
+    polygon(ctx, [[-0.45, -0.35], [0.32, -0.35], [0.46, -0.06], [0.46, 0.06], [0.32, 0.35], [-0.45, 0.35]]);
+  } else if (kind === 'mortar') {
+    roundRect(ctx, -0.43, -0.42, 0.86, 0.84, 0.15);
+  } else {
+    roundRect(ctx, -0.47, -0.42, 0.94, 0.84, 0.11);
+  }
+}
+
+function drawTracks(ctx, x0, x1, { y, w }, tread, wreck) {
   for (const side of [-1, 1]) {
     ctx.fillStyle = wreck ? '#1d1c1b' : '#2b2e34';
-    roundRect(ctx, -0.44, side * 0.3 - 0.1, 0.88, 0.2, 0.07);
+    roundRect(ctx, x0, side * y - w / 2, x1 - x0, w, Math.min(0.07, w / 2.5));
     ctx.fill();
     ctx.strokeStyle = wreck ? '#2c2a28' : '#474c55';
     ctx.lineWidth = 0.035;
     ctx.beginPath();
     const offset = ((tread % 0.13) + 0.13) % 0.13;
-    for (let x = -0.42 + offset; x < 0.43; x += 0.13) {
-      ctx.moveTo(x, side * 0.3 - 0.08);
-      ctx.lineTo(x, side * 0.3 + 0.08);
+    for (let x = x0 + 0.02 + offset; x < x1 - 0.01; x += 0.13) {
+      ctx.moveTo(x, side * y - w / 2 + 0.02);
+      ctx.lineTo(x, side * y + w / 2 - 0.02);
     }
     ctx.stroke();
   }
-  // Wanne
-  ctx.fillStyle = body;
-  roundRect(ctx, -0.37, -0.25, 0.74, 0.5, 0.08);
-  ctx.fill();
-  ctx.lineWidth = 0.04;
-  ctx.strokeStyle = deep;
-  ctx.stroke();
-  // Bug: hellere Platte vorne, damit man sieht, wohin er fährt
-  ctx.fillStyle = light;
-  ctx.globalAlpha *= 0.55;
-  roundRect(ctx, 0.17, -0.19, 0.14, 0.38, 0.04);
-  ctx.fill();
-  ctx.globalAlpha /= 0.55;
-  ctx.fillStyle = deep;
-  ctx.globalAlpha *= 0.35;
-  ctx.fillRect(-0.33, -0.21, 0.08, 0.42);
-  ctx.globalAlpha /= 0.35;
+}
+
+// Mit gedämpfter Deckkraft füllen
+function faint(ctx, alpha, fill) {
+  const before = ctx.globalAlpha;
+  ctx.globalAlpha = before * alpha;
+  fill();
+  ctx.globalAlpha = before;
+}
+
+// Ein Panzer in Feldern, Mitte bei 0,0, schon gedreht nach der Wanne.
+// `turret`: Turmwinkel relativ zur Wanne. Wird auch für die Symbole im Raum
+// benutzt. Jedes Fahrzeug hat seine eigene Form, damit man es im Getümmel
+// erkennt: Prellbock schwer mit Raketenwerfer, Kimme schlanker Keil mit
+// Doppellauf, Böller breit mit dickem Mörser, Zitteraal schwebend und rund.
+export function drawTankShape(ctx, look, turret, { tread = 0, recoil = 0, wreck = false, flash = 0, kind = 'rocket', plain = false } = {}) {
+  const body = wreck ? '#4a4744' : look.color;
+  const deep = wreck ? '#24211f' : look.deep;
+  const light = wreck ? '#5e5a55' : look.light;
+  const metal = wreck ? '#2f2d2b' : '#3a3f48';
+  const dark = wreck ? '#1f1e1c' : '#262a31';
+  const shine = 'rgba(255,255,255,0.18)';
+  ctx.lineJoin = 'round';
+
+  // Fahrwerk und Wanne
+  if (kind === 'zap') {
+    if (!wreck) {
+      faint(ctx, 0.28, () => {
+        ctx.fillStyle = light;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 0.48, 0.41, 0, 0, TAU);
+        ctx.fill();
+      });
+    }
+    ctx.fillStyle = wreck ? '#1d1c1b' : '#2b2e34';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 0.44, 0.37, 0, 0, TAU);
+    ctx.fill();
+    // die Schürze dreht sich beim Fahren
+    ctx.strokeStyle = wreck ? '#2c2a28' : '#474c55';
+    ctx.lineWidth = 0.035;
+    ctx.setLineDash([0.05, 0.07]);
+    ctx.lineDashOffset = -tread;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 0.4, 0.33, 0, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
+    // Heckflossen
+    ctx.fillStyle = deep;
+    for (const side of [-1, 1]) {
+      polygon(ctx, [[-0.26, side * 0.1], [-0.45, side * 0.24], [-0.4, side * 0.06]]);
+      ctx.fill();
+    }
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.ellipse(0.02, 0, 0.36, 0.26, 0, 0, TAU);
+    ctx.fill();
+    ctx.lineWidth = 0.04;
+    ctx.strokeStyle = deep;
+    ctx.stroke();
+    faint(ctx, 0.55, () => {
+      ctx.fillStyle = light;
+      ctx.beginPath();
+      ctx.ellipse(0.28, 0, 0.06, 0.15, 0, 0, TAU);
+      ctx.fill();
+    });
+  } else if (kind === 'gun') {
+    drawTracks(ctx, -0.44, 0.3, TRACKS.gun, tread, wreck);
+    ctx.fillStyle = body;
+    polygon(ctx, WEDGE);
+    ctx.fill();
+    ctx.lineWidth = 0.04;
+    ctx.strokeStyle = deep;
+    ctx.stroke();
+    // heller Pfeil auf dem Bug
+    faint(ctx, 0.6, () => {
+      ctx.strokeStyle = light;
+      ctx.lineWidth = 0.05;
+      ctx.beginPath();
+      ctx.moveTo(0.1, -0.15);
+      ctx.lineTo(0.33, 0);
+      ctx.lineTo(0.1, 0.15);
+      ctx.stroke();
+    });
+  } else if (kind === 'mortar') {
+    drawTracks(ctx, -0.38, 0.38, TRACKS.mortar, tread, wreck);
+    ctx.fillStyle = body;
+    polygon(ctx, OCTA_HULL);
+    ctx.fill();
+    ctx.lineWidth = 0.04;
+    ctx.strokeStyle = deep;
+    ctx.stroke();
+    faint(ctx, 0.55, () => {
+      ctx.fillStyle = light;
+      roundRect(ctx, 0.27, -0.16, 0.1, 0.32, 0.04);
+      ctx.fill();
+    });
+    // Granaten am Heck
+    for (const y of [-0.13, 0, 0.13]) {
+      ctx.beginPath();
+      ctx.arc(-0.33, y, 0.045, 0, TAU);
+      ctx.fillStyle = wreck ? '#3b3835' : light;
+      ctx.fill();
+      ctx.lineWidth = 0.025;
+      ctx.strokeStyle = deep;
+      ctx.stroke();
+    }
+  } else {
+    drawTracks(ctx, -0.46, 0.46, TRACKS.rocket, tread, wreck);
+    ctx.fillStyle = body;
+    roundRect(ctx, -0.38, -0.24, 0.76, 0.48, 0.06);
+    ctx.fill();
+    ctx.lineWidth = 0.04;
+    ctx.strokeStyle = deep;
+    ctx.stroke();
+    faint(ctx, 0.55, () => {
+      ctx.fillStyle = light;
+      roundRect(ctx, 0.2, -0.19, 0.13, 0.38, 0.04);
+      ctx.fill();
+    });
+    // Lüftungsgitter am Heck
+    faint(ctx, 0.45, () => {
+      ctx.strokeStyle = deep;
+      ctx.lineWidth = 0.025;
+      ctx.beginPath();
+      for (const x of [-0.33, -0.28, -0.23]) {
+        ctx.moveTo(x, -0.15);
+        ctx.lineTo(x, 0.15);
+      }
+      ctx.stroke();
+    });
+  }
 
   // Turm, je nach Waffe anders
   ctx.save();
   ctx.rotate(turret);
-  const metal = wreck ? '#2f2d2b' : '#3a3f48';
-  const dark = wreck ? '#1f1e1c' : '#262a31';
-  const shine = 'rgba(255,255,255,0.18)';
   const g = ctx.createRadialGradient(-0.06, -0.07, 0.02, 0, 0, 0.26);
   g.addColorStop(0, light);
   g.addColorStop(1, body);
-  ctx.lineWidth = 0.04;
-  ctx.strokeStyle = deep;
+  let markAt = 0;
+  let markSize = 0.075;
   if (kind === 'gun') {
-    // zwei schlanke Läufe, eckiger Turm
-    for (const side of [-0.05, 0.05]) {
+    // zwei lange, schlanke Läufe, eckiger Turm, Zielfernrohr
+    for (const side of [-0.045, 0.045]) {
       ctx.fillStyle = metal;
-      roundRect(ctx, 0.05 - recoil, side - 0.027, BARREL + 0.06, 0.054, 0.02);
+      roundRect(ctx, 0.04 - recoil, side - 0.024, BARREL + 0.1, 0.048, 0.02);
       ctx.fill();
       ctx.fillStyle = dark;
-      ctx.fillRect(BARREL + 0.03 - recoil, side - 0.035, 0.08, 0.07);
+      ctx.fillRect(BARREL + 0.07 - recoil, side - 0.032, 0.07, 0.064);
     }
     ctx.fillStyle = g;
-    roundRect(ctx, -0.17, -0.16, 0.34, 0.32, 0.07);
+    polygon(ctx, HEX_TURRET);
     ctx.fill();
+    ctx.lineWidth = 0.04;
+    ctx.strokeStyle = deep;
     ctx.stroke();
-  } else if (kind === 'mortar') {
-    // kurzer, dicker Lauf, breiter Turm
-    ctx.fillStyle = metal;
-    roundRect(ctx, 0.04 - recoil, -0.1, 0.4, 0.2, 0.04);
-    ctx.fill();
     ctx.fillStyle = dark;
-    roundRect(ctx, 0.36 - recoil, -0.135, 0.12, 0.27, 0.04);
+    roundRect(ctx, -0.07, -0.22, 0.2, 0.06, 0.025);
+    ctx.fill();
+    ctx.fillStyle = wreck ? dark : light;
+    ctx.beginPath();
+    ctx.arc(0.13, -0.19, 0.022, 0, TAU);
+    ctx.fill();
+    markSize = 0.065;
+  } else if (kind === 'mortar') {
+    // kurzes, dickes Rohr mit weiter Mündung, breiter Turm
+    ctx.fillStyle = metal;
+    roundRect(ctx, 0.06 - recoil, -0.12, 0.32, 0.24, 0.05);
     ctx.fill();
     ctx.fillStyle = shine;
-    ctx.fillRect(0.08 - recoil, -0.08, 0.26, 0.03);
-    ctx.fillStyle = g;
+    ctx.fillRect(0.1 - recoil, -0.09, 0.2, 0.03);
+    ctx.fillStyle = dark;
     ctx.beginPath();
-    for (let i = 0; i < 8; i += 1) {
-      const th = (i / 8) * TAU + Math.PI / 8;
-      ctx.lineTo(Math.cos(th) * 0.25, Math.sin(th) * 0.25);
-    }
-    ctx.closePath();
+    ctx.arc(0.38 - recoil, 0, 0.135, 0, TAU);
     ctx.fill();
+    ctx.fillStyle = wreck ? '#141312' : '#101216';
+    ctx.beginPath();
+    ctx.arc(0.38 - recoil, 0, 0.085, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = g;
+    polygon(ctx, OCTA_TURRET);
+    ctx.fill();
+    ctx.lineWidth = 0.04;
+    ctx.strokeStyle = deep;
     ctx.stroke();
+    markSize = 0.09;
   } else if (kind === 'zap') {
-    // Spule statt Lauf, in der Mitte eine leuchtende Kugel
+    // Gabel mit zwei Polen vorne, Spule, leuchtender Kern
+    for (const side of [-0.065, 0.065]) {
+      ctx.fillStyle = metal;
+      roundRect(ctx, 0.12, side - 0.02, 0.24, 0.04, 0.015);
+      ctx.fill();
+      ctx.fillStyle = wreck ? dark : light;
+      ctx.beginPath();
+      ctx.arc(0.37, side, 0.028, 0, TAU);
+      ctx.fill();
+    }
     ctx.fillStyle = wreck ? '#3b3632' : '#8a5a2b';
     ctx.beginPath();
-    ctx.arc(0, 0, 0.23, 0, TAU);
+    ctx.arc(0, 0, 0.21, 0, TAU);
     ctx.fill();
     ctx.strokeStyle = wreck ? '#25211e' : '#d49a5a';
     ctx.lineWidth = 0.035;
-    for (const r of [0.2, 0.15]) {
+    for (const r of [0.18, 0.13]) {
       ctx.beginPath();
       ctx.arc(0, 0, r, 0, TAU);
       ctx.stroke();
     }
-    ctx.fillStyle = wreck ? '#4a4744' : light;
+    ctx.fillStyle = light;
     ctx.beginPath();
-    ctx.arc(0, 0, 0.1, 0, TAU);
+    ctx.arc(0, 0, 0.09, 0, TAU);
     ctx.fill();
     ctx.lineWidth = 0.03;
     ctx.strokeStyle = deep;
     ctx.stroke();
-    // kleiner Fühler zeigt, wohin der Turm schaut
-    ctx.fillStyle = metal;
-    roundRect(ctx, 0.2, -0.03, 0.16, 0.06, 0.02);
-    ctx.fill();
+    markSize = 0.05;
   } else {
+    // Raketenwerfer: Kasten mit zwei Rohren, vorne schauen die Raketen raus
     ctx.fillStyle = metal;
-    roundRect(ctx, 0.04 - recoil, -0.06, BARREL - 0.04, 0.12, 0.03);
+    roundRect(ctx, -0.06 - recoil, -0.15, 0.56, 0.3, 0.05);
     ctx.fill();
-    ctx.fillStyle = dark;
-    roundRect(ctx, BARREL - 0.1 - recoil, -0.075, 0.1, 0.15, 0.03);
-    ctx.fill();
+    for (const side of [-0.07, 0.07]) {
+      ctx.fillStyle = dark;
+      roundRect(ctx, 0.1 - recoil, side - 0.045, 0.4, 0.09, 0.03);
+      ctx.fill();
+      if (!wreck) {
+        ctx.fillStyle = light;
+        ctx.beginPath();
+        ctx.arc(0.5 - recoil, side, 0.042, -Math.PI / 2, Math.PI / 2);
+        ctx.fill();
+      }
+    }
     ctx.fillStyle = shine;
-    ctx.fillRect(0.08 - recoil, -0.05, BARREL - 0.2, 0.025);
+    ctx.fillRect(-0.02 - recoil, -0.135, 0.5, 0.025);
+    markAt = -0.09;
     ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.arc(0, 0, 0.21, 0, TAU);
+    ctx.arc(markAt, 0, 0.17, 0, TAU);
     ctx.fill();
+    ctx.lineWidth = 0.04;
+    ctx.strokeStyle = deep;
     ctx.stroke();
+    markSize = 0.07;
   }
-  if (!wreck) {
+  if (!wreck && !plain) {
+    ctx.translate(markAt, 0);
     ctx.fillStyle = deep;
-    markPath(ctx, look.mark, kind === 'mortar' ? 0.09 : kind === 'zap' ? 0.05 : 0.075);
+    markPath(ctx, look.mark, markSize);
     ctx.fill('evenodd');
   }
   ctx.restore();
 
   if (flash > 0) {
-    ctx.globalAlpha *= flash;
-    ctx.fillStyle = '#ffffff';
-    roundRect(ctx, -0.44, -0.4, 0.88, 0.8, 0.12);
-    ctx.fill();
+    faint(ctx, flash, () => {
+      ctx.fillStyle = '#ffffff';
+      tankOutline(ctx, kind);
+      ctx.fill();
+    });
   }
 }
 
@@ -1287,13 +1466,14 @@ export function createRenderer(canvas) {
       ctx.fillStyle = `rgba(95,72,40,${0.22 * k})`;
       const c = Math.cos(tr.h);
       const s = Math.sin(tr.h);
-      for (const side of [-0.3, 0.3]) {
+      const h = tr.w * 0.8;
+      for (const side of [-tr.off, tr.off]) {
         const x = sx(tr.x - s * side);
         const y = sy(tr.y + c * side);
         ctx.save();
         ctx.translate(x, y);
         ctx.rotate(tr.h);
-        ctx.fillRect(-0.05 * S, -0.08 * S, 0.1 * S, 0.16 * S);
+        ctx.fillRect(-0.05 * S, -h / 2 * S, 0.1 * S, h * S);
         ctx.restore();
       }
     }
@@ -1335,9 +1515,10 @@ export function createRenderer(canvas) {
             const back = Math.cos(p.h) * (p.x - look.lx) + Math.sin(p.h) * (p.y - look.ly) < 0;
             look.tread += back ? -moved : moved;
             look.trackDist = (look.trackDist || 0) + moved;
+            const track = TRACKS[kindOf(p)];
             if (look.trackDist > 0.16) {
               look.trackDist = 0;
-              treads.push({ x: p.x, y: p.y, h: p.h, t });
+              if (track) treads.push({ x: p.x, y: p.y, h: p.h, t, off: track.y, w: track.w });
               if (treads.length > 1000) treads.shift();
             }
           }
@@ -1346,11 +1527,14 @@ export function createRenderer(canvas) {
         look.ly = p.y;
         const x = sx(p.x);
         const y = sy(p.y);
+        // Schatten; der Zitteraal schwebt, sein Schatten fällt weiter weg
+        const hover = kindOf(p) === 'zap';
         ctx.save();
-        ctx.translate(x + S * 0.08, y + S * 0.11);
+        ctx.translate(x + S * (hover ? 0.14 : 0.08), y + S * (hover ? 0.19 : 0.11));
         ctx.rotate(p.h);
-        ctx.fillStyle = 'rgba(40,28,10,0.3)';
-        roundRect(ctx, -0.47 * S, -0.43 * S, 0.94 * S, 0.86 * S, 0.14 * S);
+        ctx.scale(S, S);
+        ctx.fillStyle = hover ? 'rgba(40,28,10,0.22)' : 'rgba(40,28,10,0.3)';
+        tankOutline(ctx, kindOf(p));
         ctx.fill();
         ctx.restore();
         const sinceShot = (t - look.recoilAt) / 1000;

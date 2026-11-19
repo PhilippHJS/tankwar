@@ -18,6 +18,39 @@ const RESTART_MS = 5000; // nur für die Vorschau: so lange nach Spielende geht 
 
 const r4 = (v) => Math.round(v * 1e4) / 1e4;
 const randomVehicle = () => Math.floor(Math.random() * VEHICLES.length);
+function shuffled(list) {
+  const out = list.slice();
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+// Gibt den Bots Fahrzeuge, die kein Spieler gewählt hat, und jedem Bot ein
+// anderes. Ein Bot behält sein Fahrzeug, solange es frei bleibt; mit `fresh`
+// wird neu gelost. Reichen die Fahrzeuge nicht, wird möglichst wenig doppelt
+// vergeben: erst, was nur Spieler fahren, dann, was schon ein Bot fährt.
+export function assignBotVehicles(slots, fresh = false) {
+  const all = VEHICLES.map((_, i) => i);
+  const taken = new Set(slots.filter((slot) => slot.kind === 'human').map((slot) => slot.vehicle));
+  const used = new Set();
+  const open = [];
+  for (const slot of slots) {
+    if (slot.kind !== 'free') continue;
+    if (!fresh && !taken.has(slot.vehicle) && !used.has(slot.vehicle)) used.add(slot.vehicle);
+    else open.push(slot);
+  }
+  const pool = [
+    ...shuffled(all.filter((i) => !taken.has(i) && !used.has(i))),
+    ...shuffled(all.filter((i) => taken.has(i) && !used.has(i))),
+    ...shuffled([...used]),
+  ];
+  open.forEach((slot, n) => {
+    slot.vehicle = pool[n % pool.length];
+  });
+}
+
 const live = (phase) => phase === PHASE.COUNTDOWN || phase === PHASE.PLAY || phase === PHASE.RESULT;
 
 export function createHost({ levels, autoRestart = false, onChange = () => {} } = {}) {
@@ -28,6 +61,7 @@ export function createHost({ levels, autoRestart = false, onChange = () => {} } 
     index, kind: 'free', id: null, name: BOT_NAMES[index], online: true, heard: 0,
     queue: [], recvSeq: 0, ackSeq: 0, bot: createBot(index, index + 1), vehicle: randomVehicle(),
   }));
+  assignBotVehicles(slots, true);
   const host = { sim, slots, levels: cleanLevels(levels) };
   const epoch = Math.floor(Math.random() * 2147483647) + 1; // erkennt, wenn der Gastgeber neu geladen hat
   let version = 1;
@@ -36,7 +70,10 @@ export function createHost({ levels, autoRestart = false, onChange = () => {} } 
   let lobbyDue = 0;
 
   const slotOf = (id) => slots.find((slot) => slot.id === id) || null;
+  // Jede Änderung an den Plätzen kann einem Bot sein Fahrzeug wegnehmen.
+  // Neue Fahrzeuge gelten ab der nächsten Runde.
   const changed = () => {
+    assignBotVehicles(slots);
     version += 1;
     lobbyDue = 0;
     onChange();
@@ -57,7 +94,8 @@ export function createHost({ levels, autoRestart = false, onChange = () => {} } 
     slot.name = BOT_NAMES[slot.index];
     slot.online = true;
     slot.queue.length = 0;
-    slot.vehicle = randomVehicle();
+    // Der Bot fährt mit dem Fahrzeug des Spielers weiter, solange es kein
+    // anderer fährt.
   }
 
   // Wer im nächsten Spiel oder in der nächsten Runde dabei ist
@@ -119,9 +157,9 @@ export function createHost({ levels, autoRestart = false, onChange = () => {} } 
     const seed = randomSeed();
     slots.forEach((slot) => {
       slot.bot = createBot(slot.index, seed);
-      // Bots fahren in jedem Spiel ein zufälliges Fahrzeug
-      if (slot.kind === 'free') slot.vehicle = randomVehicle();
     });
+    // Bots fahren in jedem Spiel neu geloste Fahrzeuge
+    assignBotVehicles(slots, true);
     startMatch(sim, seed, host.levels, host.lineup());
     overAt = 0;
     changed();

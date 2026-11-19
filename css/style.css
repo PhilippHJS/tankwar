@@ -169,7 +169,7 @@ form { margin: 0 0 22px; }
 }
 #slots li.empty { opacity: 0.55; }
 #slots li.me { border-color: var(--line2); background: #1a1f28; }
-#slots svg { width: 40px; height: 40px; display: block; }
+#slots .ticon { width: 40px; height: 40px; display: block; }
 #slots .who { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #slots .who small { margin-left: 8px; font-size: 12px; color: var(--muted); font-weight: 500; letter-spacing: 0.04em; }
 #slots .who em { display: block; font-style: normal; font-size: 12px; font-weight: 500; color: var(--muted); }
@@ -195,7 +195,7 @@ form { margin: 0 0 22px; }
   border-radius: 10px;
 }
 .vehicle[aria-checked='true'] { border-color: var(--accent); background: #1d1f22; box-shadow: inset 0 0 0 1px rgba(255, 200, 58, 0.25); }
-.vehicle svg { grid-row: span 2; width: 58px; height: 58px; }
+.vehicle .ticon { grid-row: span 2; width: 58px; height: 58px; }
 .vehicle .name { font: 400 16px/1.1 var(--display); }
 .vehicle .name small { font: 700 12px/1 var(--body); color: var(--muted); margin-left: 8px; letter-spacing: 0.04em; text-transform: uppercase; }
 .vehicle .hint { font-size: 13px; color: var(--muted); font-weight: 500; }
@@ -264,7 +264,7 @@ fieldset:disabled .opt input:checked + span { opacity: 1; }
 }
 .pcard.me { background: rgba(30, 34, 44, 0.92); border-color: var(--line2); border-bottom-color: var(--c); }
 .pcard.out { opacity: 0.45; }
-.pcard svg { grid-row: span 2; width: 34px; height: 34px; }
+.pcard .ticon { grid-row: span 2; width: 34px; height: 34px; }
 .pcard .top { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .pcard .who { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .pcard .lives { display: flex; gap: 2px; }
@@ -377,7 +377,7 @@ fieldset:disabled .opt input:checked + span { opacity: 1; }
 #result ol { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 6px; text-align: left; }
 #result li { display: grid; grid-template-columns: 30px 1fr auto; gap: 10px; align-items: center; padding: 6px 10px; border-radius: 8px; background: #151920; }
 #result li.win { background: #262414; box-shadow: inset 0 0 0 1px rgba(255,200,58,0.35); }
-#result li svg { width: 30px; height: 30px; }
+#result li .ticon { width: 30px; height: 30px; }
 #result li .who { font-weight: 700; }
 #result li .pips { display: flex; gap: 4px; }
 #result li .pips i { width: 10px; height: 10px; transform: rotate(45deg); border: 2px solid #6b6455; border-radius: 2px; }
@@ -388,7 +388,7 @@ fieldset:disabled .opt input:checked + span { opacity: 1; }
 
 @media (max-width: 900px) {
   .pcard { grid-template-columns: 26px 1fr; padding: 5px 7px; }
-  .pcard svg { width: 26px; height: 26px; }
+  .pcard .ticon { width: 26px; height: 26px; }
   .pcard .tag { display: none; }
   #clock { min-width: 100px; padding: 4px 12px 6px; }
   #timer { font-size: 22px; }

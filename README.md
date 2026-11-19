@@ -6,7 +6,7 @@ Panzerschlacht für bis zu vier im Browser, jeder am eigenen Rechner und ohne An
 
 1. Seite öffnen, Namen eingeben, **Raum erstellen**.
 2. Den Einladungslink an bis zu drei Mitspieler schicken.
-3. Jeder wählt im Raum sein Fahrzeug. Der Gastgeber stellt Rundendauer und Punkte zum Sieg ein und startet das Spiel. Freie Plätze können Bots mit zufälligem Fahrzeug übernehmen, alleine ausprobieren geht also auch.
+3. Jeder wählt im Raum sein Fahrzeug. Der Gastgeber stellt Rundendauer und Punkte zum Sieg ein und startet das Spiel. Freie Plätze können Bots übernehmen, alleine ausprobieren geht also auch. Bots fahren nie ein Fahrzeug, das ein Spieler gewählt hat, und nie zwei dasselbe; in jedem Spiel wird neu gelost.
 
 | Was | Tastatur | Gamepad |
 | --- | --- | --- |
@@ -48,6 +48,8 @@ Das Tempo wirkt auf alles, was sich bewegt oder lädt: Fahren, Drehen, Raketen, 
 ## Fahrzeuge
 
 Alle haben 100 Lebensleiste. Tempo in Feldern pro Sekunde bei mittlerem Tempo, die Arenen sind 22 × 14 Felder groß.
+
+Jedes Fahrzeug hat seine eigene Form, damit man es im Getümmel erkennt: der Prellbock ist ein schwerer Kettenpanzer mit Raketenwerfer, die Kimme ein schlanker Keil mit Doppellauf, der Böller breit und achteckig mit dickem Mörser und Granaten am Heck, der Zitteraal ein runder Schweber ohne Ketten (und ohne Kettenspuren). Die Farbe zeigt, wer fährt.
 
 | Fahrzeug | Tempo | Waffe |
 | --- | --- | --- |
