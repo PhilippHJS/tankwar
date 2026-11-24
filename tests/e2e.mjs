@@ -272,11 +272,39 @@ async function run(mode) {
   const seenHurt = (await view(guests[1])).players[target].hp;
   check(hurt < 100 && seenHurt === hurt, `Treffer zählt beim Gastgeber und beim Getroffenen (${hurt}, ${seenHurt})`);
 
+  // Maus: Rechtsklick fährt dorthin, Q schießt zur Maus
+  const free = await g.evaluate(() => {
+    const { arena } = window.__tankwar.view();
+    const spots = [[7.5, 4.5], [9.5, 4.5], [8.5, 5.5], [7.5, 5.5], [9.5, 5.5], [5.5, 4.5]];
+    return spots.find(([x, y]) => !arena.solid[Math.floor(y) * arena.W + Math.floor(x)]);
+  });
+  const goalAt = await g.evaluate(([x, y]) => window.__tankwar.screenOf(x, y), free);
+  await g.mouse.move(goalAt.x - 30, goalAt.y - 30);
+  await g.mouse.move(goalAt.x, goalAt.y, { steps: 4 });
+  await g.mouse.down({ button: 'right' });
+  await g.mouse.up({ button: 'right' });
+  await sleep(direct ? 3500 : 4500);
+  const arrived = await host.evaluate((slot) => window.__tankwar.session.host.sim.players[slot].tank, gs.slot);
+  const miss = Math.hypot(arrived.x - free[0], arrived.y - free[1]);
+  check(miss < 0.25, `Rechtsklick fährt dorthin (${miss.toFixed(2)} Felder daneben)`);
+  const aimAt = await g.evaluate(([x, y]) => window.__tankwar.screenOf(x - 2, y + 3), free);
+  await g.mouse.move(aimAt.x, aimAt.y, { steps: 4 });
+  const rocketsBeforeQ = await host.evaluate(() => window.__tankwar.session.host.sim.nextRocket);
+  await host.evaluate((slot) => { window.__tankwar.session.host.sim.players[slot].tank.cd = 0; }, gs.slot);
+  await g.keyboard.press('KeyQ');
+  await sleep(direct ? 1200 : 1800);
+  const aimed = await host.evaluate((slot) => window.__tankwar.session.host.sim.players[slot].tank.a, gs.slot);
+  const firedQ = await host.evaluate(() => window.__tankwar.session.host.sim.nextRocket);
+  const wantA = Math.atan2(3, -2);
+  const offA = Math.abs(Math.atan2(Math.sin(aimed - wantA), Math.cos(aimed - wantA)));
+  check(firedQ > rocketsBeforeQ && offA < 0.06, `Q schießt zur Maus (Turm ${offA.toFixed(3)} daneben)`);
+  if (direct) await shot(g, '05-maus');
+
   // Ab jetzt fahren alle automatisch und schießen aufeinander
   for (let i = 0; i < all.length; i += 1) await pilot(all[i], i * 1.7);
   await sleep(8000);
   if (direct) {
-    await shot(guests[1], '05-gefecht');
+    await shot(guests[1], '06-gefecht');
     const rtt = (await view(guests[0])).rtt;
     check(rtt !== null && rtt < 80, `Laufzeit zum Gastgeber ${rtt === null ? '?' : rtt.toFixed(0)} ms`);
   }
@@ -297,14 +325,14 @@ async function run(mode) {
   });
   for (const page of all) await until(page, (phase) => window.__tankwar.view().phase >= phase, PHASE.RESULT);
   await sleep(700);
-  await shot(guests[0], '06-rundenende');
+  await shot(guests[0], '07-rundenende');
   const results = await Promise.all(all.map(async (page) => (await view(page)).winners.join()));
   check(results.every((r) => r === '0'), `alle sehen denselben Rundensieger (${results})`);
   check(!(await guests[0].isHidden('#result')), 'Rundenergebnis wird angezeigt');
   // 1 Punkt zum Sieg: danach ist das Spiel vorbei
   for (const page of all) await until(page, (phase) => window.__tankwar.view().phase === phase, PHASE.OVER, 15000);
   await sleep(500);
-  await shot(host, '07-spielende');
+  await shot(host, '08-spielende');
   const finals = await Promise.all(all.map(async (page) => (await view(page)).champions.join()));
   check(finals.every((f) => f === '0'), `alle sehen denselben Gesamtsieger (${finals})`);
   check((await host.textContent('#b-start')).includes('Neues Spiel'), 'Gastgeber kann ein neues Spiel starten');

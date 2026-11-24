@@ -1514,14 +1514,49 @@ export function createRenderer(canvas) {
 
   // Zielhilfe für den eigenen Panzer: bei der Rakete die Bahn bis zum ersten
   // Abpraller, bei der Pistole die Schusslinie bis zur Wand oder Reichweite.
-  function drawAim(p, view) {
+  // Rechtsklick: ein kurzer Kreis, wo der Panzer hinfahren soll
+  const marks = [];
+  function mark(x, y, t) {
+    marks.push({ x, y, t });
+    if (marks.length > 4) marks.shift();
+  }
+  function drawMarks(t) {
+    for (let i = marks.length - 1; i >= 0; i -= 1) {
+      const m = marks[i];
+      const k = (t - m.t) / 420;
+      if (k >= 1 || k < 0) {
+        marks.splice(i, 1);
+        continue;
+      }
+      ctx.save();
+      ctx.strokeStyle = `rgba(140,240,160,${0.85 * (1 - k)})`;
+      ctx.lineWidth = Math.max(2, S * 0.06);
+      ctx.beginPath();
+      ctx.arc(sx(m.x), sy(m.y), S * (0.42 - 0.28 * k), 0, TAU);
+      ctx.stroke();
+      ctx.fillStyle = `rgba(140,240,160,${0.6 * (1 - k)})`;
+      ctx.beginPath();
+      ctx.arc(sx(m.x), sy(m.y), Math.max(2, S * 0.06), 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawAim(p, view, cursor) {
     const vehicle = VEHICLES[p.vehicle] || VEHICLES[0];
     const w = vehicle.weapon;
     let points;
+    let lands = null;
     if (w.kind === 'rocket') points = traceRocket(view.arena, p, w, 1, 1.6);
     else if (w.kind === 'gun') {
       const ray = gunRay(view.arena, p, w.range);
       points = [{ x: ray.sx, y: ray.sy }, { x: ray.sx + ray.dx * ray.len, y: ray.sy + ray.dy * ray.len }];
+    } else if (w.kind === 'mortar' && !(p.ch > 0) && cursor) {
+      // Mit der Maus: dort landet die Bombe auf Q (höchstens so weit, wie sie reicht)
+      const a = Math.atan2(cursor.y - p.y, cursor.x - p.x);
+      const end = blastPoint(view.arena, { ox: p.x, oy: p.y, ca: a }, Math.min(w.range, Math.hypot(cursor.x - p.x, cursor.y - p.y)));
+      points = [{ x: p.x + Math.cos(a) * 0.6, y: p.y + Math.sin(a) * 0.6 }, end];
+      lands = end;
     } else if (w.kind === 'mortar' && !(p.ch > 0)) {
       // Richtung, in die der Zielkreis beim Drücken wandern wird
       const end = blastPoint(view.arena, { ox: p.x, oy: p.y, ca: p.a }, w.range);
@@ -1536,6 +1571,14 @@ export function createRenderer(canvas) {
       ctx.beginPath();
       ctx.moveTo(sx(points[i].x), sy(points[i].y));
       ctx.lineTo(sx(points[i + 1].x), sy(points[i + 1].y));
+      ctx.stroke();
+    }
+    if (lands) {
+      ctx.setLineDash([Math.max(2, S * 0.08), Math.max(3, S * 0.1)]);
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = Math.max(1.5, S * 0.04);
+      ctx.beginPath();
+      ctx.arc(sx(lands.x), sy(lands.y), w.radius * S, 0, TAU);
       ctx.stroke();
     }
     ctx.restore();
@@ -1723,7 +1766,8 @@ export function createRenderer(canvas) {
       }
       const me = view.slot >= 0 ? view.players[view.slot] : null;
       const meLive = me && me.in && me.dead === 0 && me.lives > 0;
-      if (opts.aim && meLive && (view.phase === PHASE.PLAY || view.phase === PHASE.COUNTDOWN)) drawAim(me, view);
+      if (opts.aim && meLive && (view.phase === PHASE.PLAY || view.phase === PHASE.COUNTDOWN)) drawAim(me, view, opts.cursor);
+      drawMarks(t);
       // Eigener Panzer fast kaputt: er qualmt
       if (opts.tags && meLive && me.maxHp && me.hp / me.maxHp < 0.3) {
         const look = lookOf(me.slot);
@@ -1768,6 +1812,7 @@ export function createRenderer(canvas) {
   function toWorld(px, py) {
     return { x: (px - ox) / S, y: (py - oy) / S };
   }
+  const toScreen = (x, y) => ({ x: ox + x * S, y: oy + y * S });
 
   function reset() {
     stoneKey = '';
@@ -1784,9 +1829,11 @@ export function createRenderer(canvas) {
   return {
     draw,
     effect,
+    mark,
     resize,
     reset,
     toWorld,
+    toScreen,
     setInsets(next) {
       insets = next;
     },

@@ -5,6 +5,7 @@ import { createHost, createLoopback } from './host.js';
 import { createClient } from './client.js';
 import { createRenderer, drawTankShape } from './render.js';
 import { createControls } from './input.js';
+import { createPilot } from './pilot.js';
 import { createMusic } from './music.js';
 import { createSfx } from './sfx.js';
 import { createHostNet, createGuestNet, makeRoomCode, cleanCode, makeId, supported, DEFAULT_RELAYS } from './net.js';
@@ -598,7 +599,7 @@ function updateHud(view, t) {
   if (view.phase !== PHASE.PLAY) playSince = 0;
   const pad = controls.usesPad();
   put('hint-text', pad, (v) => {
-    $('#hint').textContent = v ? 'Linker Stick fährt, rechter zielt, A oder Schultertaste schießt' : 'WASD fährt, die Pfeiltasten zielen, die Leertaste schießt';
+    $('#hint').textContent = v ? 'Linker Stick fährt, rechter zielt, A oder Schultertaste schießt' : 'Rechtsklick fährt, Q schießt zur Maus · oder WASD, Pfeiltasten und Leertaste';
   });
   put('hint', controls.hasMoved() && playSince && t - playSince > 8000, (gone) => {
     $('#hint').classList.toggle('gone', gone);
@@ -609,7 +610,7 @@ function updateHud(view, t) {
   let down = '';
   if (view.phase === PHASE.PLAY || view.phase === PHASE.COUNTDOWN) {
     if (!me || !me.in) down = 'Du schaust zu und steigst in der nächsten Runde ein.';
-    else if (me.ghost) down = 'Du bist ein Geist. Fahr am Rand entlang, halte die Leertaste und lass los, um eine Bombe zu werfen.<small>Gibst du damit einem Gegner den Rest, kehrst du mit einem Leben zurück.</small>';
+    else if (me.ghost) down = 'Du bist ein Geist. Rechtsklick fährt am Rand entlang, Q wirft eine Bombe zur Maus.<small>Oder WASD und Leertaste halten. Gibst du damit einem Gegner den Rest, kehrst du mit einem Leben zurück.</small>';
     else if (me.lives <= 0) down = view.sd ? 'Raus. Im Sudden Death schaust du nur noch zu.' : 'Alle Leben verloren.';
     else if (me.dead > 0 && now() < rebornUntil) down = 'Du kehrst zurück!';
     else if (me.dead > 0) {
@@ -693,11 +694,31 @@ function updateHud(view, t) {
 
 // ---------- Steuerung ----------
 
-function inputCode() {
+// Maussteuerung: Rechtsklick fährt, Q schießt zur Maus (siehe pilot.js).
+// Tastatur und Gamepad gehen vor: WASD bricht eine Fahrt ab, die Pfeiltasten
+// zielen statt der Maus.
+const pilot = createPilot();
+let cursor = null; // Mauspunkt in Feldern, wenn der Turm der Maus folgt
+function inputCode(t) {
   const c = controls.read();
+  cursor = null;
   if (!session) return 0;
-  const move = Math.abs(c.mx) + Math.abs(c.my) > 0.2 ? moveIndex(c.mx, c.my) : 0;
-  return packInput(move, c.aim === null ? -1 : aimIndex(c.aim), c.fire);
+  const state = session.client.pilotState();
+  const at = c.pointer ? renderer.toWorld(c.pointer.x, c.pointer.y) : null;
+  const keys = Math.abs(c.mx) + Math.abs(c.my) > 0.2;
+  if (keys) pilot.cancel();
+  else if (c.order && at) {
+    pilot.order(state, at.x, at.y);
+    if (c.click) {
+      const { W, H } = state.arena;
+      renderer.mark(Math.min(Math.max(at.x, 1.2), W - 1.2), Math.min(Math.max(at.y, 1.2), H - 1.2), t);
+    }
+  }
+  const p = pilot.steer(state, { cursor: at, q: c.q, mouseAim: c.mouseAim, now: t });
+  if (c.mouseAim) cursor = at;
+  const move = keys ? moveIndex(c.mx, c.my) : p.move;
+  const aim = c.aim !== null ? c.aim : p.aim;
+  return packInput(move, aim === null ? -1 : aimIndex(aim), c.fire || p.fire);
 }
 
 // ---------- Takt ----------
@@ -740,7 +761,7 @@ function frame() {
 function drawFrame(t) {
   let view = null;
   let screen = 'start';
-  const code = inputCode();
+  const code = inputCode(t);
   if (session) {
     session.client.frame(t, debug.pilot ? debug.pilot(session.client) : code);
     view = session.client.view(t);
@@ -792,7 +813,7 @@ function drawFrame(t) {
     }
     sfx.frame(view, screen === 'game');
     tickFeed(t);
-    renderer.draw(view, t, { tags: true, aim: screen === 'game' });
+    renderer.draw(view, t, { tags: true, aim: screen === 'game', cursor: screen === 'game' ? cursor : null });
   } else {
     sfx.frame(null, false);
     demo.client.frame(t);
@@ -828,6 +849,7 @@ window.__tankwar = {
   debug,
   view: () => (session ? session.client.view(now()) : null),
   tools: { packInput, moveIndex, aimIndex },
+  screenOf: (x, y) => renderer.toScreen(x, y),
   music,
   sfx,
 };

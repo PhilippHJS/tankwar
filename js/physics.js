@@ -9,14 +9,15 @@ const TAU = Math.PI * 2;
 
 // ---------- Eingaben ----------
 //
-// Eine Eingabe ist eine ganze Zahl: Fahrtrichtung (0 steht, 1 bis 16 die
-// Richtungen im Uhrzeigersinn ab rechts), Feuerknopf und Zielrichtung des Turms
-// (0 behält die Richtung, sonst Winkel in 1024 Stufen plus eins).
+// Eine Eingabe ist eine ganze Zahl: Fahrtrichtung (0 steht, 1 bis 24 die
+// Richtungen im Uhrzeigersinn ab rechts, alle 15 Grad, fein genug fürs Fahren
+// mit der Maus), Feuerknopf und Zielrichtung des Turms (0 behält die Richtung,
+// sonst Winkel in 1024 Stufen plus eins).
 
-export const MOVE_DIRS = 16;
+export const MOVE_DIRS = 24;
 export const AIM_STEPS = 1024;
 export const IDLE = 0;
-export const MAX_INPUT = 16 | 32 | (AIM_STEPS << 6);
+export const MAX_INPUT = 31 | 32 | (AIM_STEPS << 6);
 
 export const packInput = (move, aim, fire) => move | (fire ? 32 : 0) | ((aim < 0 ? 0 : aim + 1) << 6);
 export const inputMove = (code) => code & 31;

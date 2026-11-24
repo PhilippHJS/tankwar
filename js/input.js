@@ -1,6 +1,13 @@
-// Steuerung: Tastatur und Gamepad, beides gleichzeitig. Fahren und Zielen
-// sind getrennt: WASD fährt, die Pfeiltasten richten den Turm aus, die
-// Leertaste schießt. Gedrückt halten feuert, sobald wieder geladen ist.
+// Steuerung: Maus, Tastatur und Gamepad, alles gleichzeitig.
+//
+// Mit der Maus wie in LoL oder Dota: Rechtsklick fährt dorthin (gehalten folgt
+// der Panzer der Maus), Q schießt dorthin, wo die Maus ist, der Turm zeigt
+// immer zur Maus. Was daraus wird, rechnet pilot.js aus.
+//
+// Mit der Tastatur sind Fahren und Zielen getrennt: WASD fährt, die
+// Pfeiltasten richten den Turm aus, die Leertaste schießt. Gedrückt halten
+// feuert, sobald wieder geladen ist. WASD bricht eine Fahrt per Mausklick ab;
+// wer die Pfeiltasten benutzt, zielt damit, bis er die Maus wieder bewegt.
 //
 // Pfeiltasten geben eine Richtung vor: Rechts dreht den Turm nach rechts, bis
 // er dort ankommt, dann bleibt er stehen. Zwei Pfeile zugleich ergeben die
@@ -14,6 +21,7 @@ const KEYS = {
   KeyW: 'up', KeyS: 'down', KeyA: 'left', KeyD: 'right',
   ArrowUp: 'aimU', ArrowDown: 'aimD', ArrowLeft: 'aimL', ArrowRight: 'aimR',
   Space: 'fire',
+  KeyQ: 'q',
 };
 const AIM_KEYS = ['aimU', 'aimD', 'aimL', 'aimR'];
 const DEAD = 0.3; // tote Zone der Sticks
@@ -33,6 +41,11 @@ export function createControls(target = window) {
   let aimCount = 0;
   let lastAim = null;
   let holdUntil = 0;
+  let qTapped = false;
+  let pointer = null; // Mausposition auf dem Bildschirm
+  let mouseAim = false; // der Turm folgt der Maus
+  let order = false; // Rechtsklick seit dem letzten Lesen
+  let rightHeld = false;
 
   const isDown = (action) => {
     for (const value of held.values()) if (value === action) return true;
@@ -52,13 +65,41 @@ export function createControls(target = window) {
     counter += 1;
     pressedAt[action] = counter;
     if (action === 'fire') tapped = true;
-    else if (!AIM_KEYS.includes(action)) moved = true;
+    else if (action === 'q') {
+      qTapped = true;
+      if (pointer) mouseAim = true;
+    } else if (AIM_KEYS.includes(action)) mouseAim = false;
+    else moved = true;
   });
   target.addEventListener('keyup', (event) => {
     if (held.delete(event.code)) event.preventDefault();
   });
-  const release = () => held.clear();
+  const release = () => {
+    held.clear();
+    rightHeld = false;
+  };
   target.addEventListener('blur', release);
+
+  // Maus
+  target.addEventListener('mousemove', (event) => {
+    if (pointer && Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 3) mouseAim = true;
+    pointer = { x: event.clientX, y: event.clientY };
+  });
+  target.addEventListener('mousedown', (event) => {
+    pointer = { x: event.clientX, y: event.clientY };
+    if (!enabled || event.button !== 2) return;
+    event.preventDefault();
+    order = true;
+    rightHeld = true;
+    mouseAim = true;
+    moved = true;
+  });
+  target.addEventListener('mouseup', (event) => {
+    if (event.button === 2) rightHeld = false;
+  });
+  target.addEventListener('contextmenu', (event) => {
+    if (enabled) event.preventDefault();
+  });
   if (typeof document !== 'undefined') document.addEventListener('visibilitychange', release);
 
   const axis = (neg, pos) => {
@@ -110,11 +151,15 @@ export function createControls(target = window) {
   }
 
   return {
-    // mx, my: Fahrtrichtung; aim: Zielrichtung des Turms oder null (bleibt); fire
+    // mx, my: Fahrtrichtung; aim: Zielrichtung des Turms oder null (bleibt); fire.
+    // Dazu für die Maus: pointer (Bildschirmpunkt oder null), order (dorthin
+    // fahren), q (Q gedrückt), mouseAim (der Turm soll der Maus folgen).
     read(now = performance.now()) {
-      const out = { mx: 0, my: 0, aim: null, fire: false };
+      const out = { mx: 0, my: 0, aim: null, fire: false, pointer, order: false, click: false, q: false, mouseAim: false };
       if (!enabled) {
         tapped = false;
+        qTapped = false;
+        order = false;
         return out;
       }
       out.mx = axis('left', 'right');
@@ -122,6 +167,12 @@ export function createControls(target = window) {
       out.aim = arrowAim(now);
       out.fire = isDown('fire') || tapped;
       tapped = false;
+      out.q = isDown('q') || qTapped;
+      qTapped = false;
+      out.click = order; // frischer Rechtsklick
+      out.order = order || rightHeld; // gehalten: dem Mauszeiger nach
+      order = false;
+      out.mouseAim = mouseAim && out.aim === null && Boolean(pointer);
       const pad = readPad();
       if (pad) {
         if (!out.mx && !out.my && (pad.mx || pad.my)) {
@@ -131,6 +182,8 @@ export function createControls(target = window) {
         }
         if (out.aim === null && pad.aim !== null) {
           out.aim = pad.aim;
+          out.mouseAim = false;
+          mouseAim = false;
           padSeen = true;
         }
         if (pad.fire) out.fire = true;

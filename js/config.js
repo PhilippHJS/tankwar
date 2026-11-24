@@ -3,7 +3,7 @@
 
 export const TICK_RATE = 60;
 export const DT = 1 / TICK_RATE;
-export const PROTOCOL = 7;
+export const PROTOCOL = 8;
 
 // Plätze im Raum. Alles ist auf eine beliebige Zahl ausgelegt, für mehr
 // Spieler braucht es nur mehr Farben (siehe COLORS) und Arenen mit genug
@@ -68,7 +68,7 @@ export const VEHICLES = [
     ...HULL,
     id: 'boeller',
     name: 'Böller',
-    hint: 'Leertaste halten schiebt den Zielkreis geradeaus hinaus, loslassen sprengt dort. Geht durch Wände und trifft auch dich.',
+    hint: 'Q wirft die Bombe zur Maus: Der Zielkreis wandert erst hin, dann knallt es dort. Geht durch Wände und trifft auch dich.',
     speed: 2,
     weapon: {
       kind: 'mortar',
@@ -86,7 +86,7 @@ export const VEHICLES = [
     ...HULL,
     id: 'zitteraal',
     name: 'Zitteraal',
-    hint: 'Schnell. Leertaste halten trifft alle Gegner in der Nähe mit Blitzen, solange Mana da ist.',
+    hint: 'Schnell. Q halten trifft alle Gegner in der Nähe mit Blitzen, solange Mana da ist.',
     speed: 3,
     weapon: {
       kind: 'zap',

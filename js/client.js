@@ -653,6 +653,22 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
   // Für die Zielhilfe: wo der eigene Panzer gerade gezeigt wird
   client.myTank = () => (haveMe ? renderMe({}) : null);
   client.predicted = () => (haveMe ? me : null);
+  // Für die Maussteuerung: der eigene Panzer oder Geist, wie vorausberechnet
+  client.pilotState = () => {
+    const arr = myArr();
+    const ok = Boolean(arr && haveMe && client.status === 'in');
+    return {
+      arena: client.arena,
+      tank: me,
+      ghost,
+      live: ok && isLive(arr),
+      ghostOn: ok && isGhost(arr),
+      vehicle: myVehicle(),
+      ghostParams: ghostParams(),
+      tp: arr ? `${arr[P.TP]}|${arr[P.GA]}|${arr[P.DEAD] > 0}` : null,
+      seq,
+    };
+  };
   client.setVehicle = (index) => {
     client.vehicle = cleanVehicle(index);
     link.send({ t: 'veh', v: client.vehicle }, false);

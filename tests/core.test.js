@@ -47,7 +47,7 @@ test('in jeder Arena ist jedes freie Feld erreichbar', () => {
 });
 
 test('Eingaben lassen sich verpacken und auspacken', () => {
-  for (const move of [0, 1, 9, 16]) {
+  for (const move of [0, 1, 9, 24]) {
     for (const aim of [-1, 0, 511, 1023]) {
       for (const fire of [false, true]) {
         const code = packInput(move, aim, fire);

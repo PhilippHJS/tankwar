@@ -8,13 +8,17 @@ Panzerschlacht für bis zu vier im Browser, jeder am eigenen Rechner und ohne An
 2. Den Einladungslink an bis zu drei Mitspieler schicken.
 3. Jeder wählt im Raum sein Fahrzeug. Der Gastgeber stellt Rundendauer und Punkte zum Sieg ein und startet das Spiel. Freie Plätze können Bots übernehmen, alleine ausprobieren geht also auch. Bots fahren nie ein Fahrzeug, das ein Spieler gewählt hat, und nie zwei dasselbe; in jedem Spiel wird neu gelost.
 
-| Was | Tastatur | Gamepad |
-| --- | --- | --- |
-| Fahren | WASD | linker Stick oder Steuerkreuz |
-| Zielen | Pfeiltasten | rechter Stick |
-| Schießen | Leertaste, je nach Fahrzeug tippen oder halten | A, RB oder RT |
+| Was | Maus (wie LoL oder Dota) | Tastatur | Gamepad |
+| --- | --- | --- | --- |
+| Fahren | Rechtsklick dorthin, gehalten folgt der Panzer der Maus | WASD | linker Stick oder Steuerkreuz |
+| Zielen | der Turm zeigt immer zur Maus | Pfeiltasten | rechter Stick |
+| Schießen | Q schießt zur Maus | Leertaste, je nach Fahrzeug tippen oder halten | A, RB oder RT |
 
-Fahren und Zielen sind getrennt: Die Wanne fährt in die gewünschte Richtung, der Turm zeigt unabhängig davon aufs Ziel. Liegt die Richtung eher hinter dem Panzer, fährt er rückwärts, statt umständlich zu wenden.
+Alles geht gleichzeitig. WASD bricht eine Fahrt per Rechtsklick ab. Wer die Pfeiltasten benutzt, zielt damit, bis er die Maus wieder bewegt.
+
+Mit der Maus: Ein Rechtsklick fährt auf dem kürzesten Weg um Wände herum dorthin und hält an. Ein grüner Kreis zeigt kurz, wohin. Ein Klick in eine Wand fährt so nah wie möglich heran. Q schießt, sobald der Turm zur Maus zeigt. Er dreht sich nur mit seinem Tempo, ein Druck auf Q wartet deshalb bis zu einer Sekunde darauf und auch aufs Nachladen. Q gehalten feuert weiter. Beim Böller lädt Q die Bombe auf und lässt los, sobald der Zielkreis bei der Maus ist; vorher zeigt ein gestrichelter Kreis, wo sie landen wird. Der Zitteraal blitzt, solange Q gedrückt ist. Als Geist fährt ein Rechtsklick am Rand zur nächsten Stelle, und Q wirft so weit, wie die Maus von der Wand weg ist.
+
+Mit der Tastatur sind Fahren und Zielen getrennt: Die Wanne fährt in die gewünschte Richtung, der Turm zeigt unabhängig davon aufs Ziel. Liegt die Richtung eher hinter dem Panzer, fährt er rückwärts, statt umständlich zu wenden.
 
 Ein Pfeil dreht den Turm in seine Richtung, bis er dort ankommt, dann bleibt er stehen. Zwei Pfeile zugleich zielen schräg dazwischen. Lässt man los, bleibt der Turm, wo er gerade ist, so lassen sich auch Winkel dazwischen einstellen. Eine gestrichelte Linie zeigt, wohin der Schuss geht, ein Balken unter dem eigenen Panzer Nachladen, Magazin oder Mana.
 
@@ -26,7 +30,7 @@ Das Gerät des Gastgebers führt den Spielstand. Seine Seite muss offen bleiben,
 - Wer abgeschossen wird, ist 5 Sekunden raus und steigt dann am Startplatz wieder ein, der am weitesten von den anderen weg ist. Danach ist er 2 Sekunden unverwundbar.
 - Kein Eigenbeschuss: Eigene Raketen, Schüsse und Blitze tun dem eigenen Panzer nichts. Einzige Ausnahme ist die Bombe des Böllers.
 - Gespielt wird auf fünf Arenen. Zu Beginn jedes Spiels wird ihre Reihenfolge gemischt, jede Runde kommt die nächste, nach der fünften geht es von vorn los.
-- Wer alle Leben verloren hat, ist nicht einfach raus: Kurz darauf fährt er als Geist auf dem Rand der Arena herum (WASD) und wirft kleine Bomben quer zur Wand nach innen. Leertaste halten wirft weiter, bis 12 Felder. Die Bombe fliegt über Wände hinweg, landet, blinkt kurz und explodiert dann (14 Schaden in der Mitte, 6 am Rand, Radius 1,1). Danach dauert es 4,5 s bis zum nächsten Wurf. Gibt ein Geist damit einem Gegner den Rest, kehrt er mit einem Leben und 30 % Lebensleiste an einem freien Startplatz zurück, kurz geschützt.
+- Wer alle Leben verloren hat, ist nicht einfach raus: Kurz darauf fährt er als Geist auf dem Rand der Arena herum (Rechtsklick oder WASD) und wirft kleine Bomben quer zur Wand nach innen (Q zur Maus, oder Leertaste: halten wirft weiter), bis 12 Felder. Die Bombe fliegt über Wände hinweg, landet, blinkt kurz und explodiert dann (14 Schaden in der Mitte, 6 am Rand, Radius 1,1). Danach dauert es 4,5 s bis zum nächsten Wurf. Gibt ein Geist damit einem Gegner den Rest, kehrt er mit einem Leben und 30 % Lebensleiste an einem freien Startplatz zurück, kurz geschützt.
 - Die Runde endet, wenn nur noch einer Leben hat. Erwischen sich die letzten beiden gleichzeitig, gewinnen beide.
 - Läuft die Zeit ab, beginnt der **Sudden Death**, siehe unten. Eine Wertung nach Leben oder Lebensleiste gibt es nicht mehr.
 
@@ -85,7 +89,7 @@ Eine statische Seite ohne Server und ohne Build-Schritt, aufgebaut wie Hatz.
 - `js/physics.js`, `js/sim.js`, `js/stones.js`, `js/bots.js`: Bewegung, Regeln, Steine im Sudden Death und Bots, ohne Browser-Abhängigkeiten
 - `js/host.js`, `js/client.js`: Gastgeber und die Sicht eines Geräts auf das Spiel
 - `js/net.js`: Verbindung zwischen den Geräten und Verschlüsselung
-- `js/render.js`, `js/input.js`, `js/app.js`: Darstellung, Steuerung, Oberfläche
+- `js/render.js`, `js/input.js`, `js/pilot.js`, `js/app.js`: Darstellung, Steuerung (mit der Maus: Wege um Wände, Schüsse zur Maus), Oberfläche
 - `js/sound.js`, `js/sfx.js`, `js/music.js`: Ton, Geräusche, Musik
 
 ### Warum sich die Steuerung direkt anfühlt
