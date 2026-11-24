@@ -1,24 +1,22 @@
 // Steuerung mit der Maus, wie in LoL oder Dota: Rechtsklick fährt dorthin,
-// um Wände herum. Q schießt dorthin, wo die Maus gerade ist.
+// um Wände herum. Der Turm zeigt immer sofort zur Maus, Q ist der Abzug.
 //
 // Am Spiel selbst ändert das nichts: Daraus werden in jedem Bild dieselben
 // Eingaben, die auch Tastatur und Gamepad liefern (Fahrtrichtung, Zielrichtung
-// des Turms, Feuerknopf). Der Turm zeigt immer zur Maus. Weil er sich nur mit
-// seinem Tempo dreht, wartet ein Schuss mit Q, bis er dorthin zeigt.
+// des Turms, Feuerknopf).
 //
-//   Rakete, Pistole  schießen, sobald der Turm zur Maus zeigt; Q halten feuert weiter
-//   Bombe            lädt auf und lässt los, wenn der Zielkreis bei der Maus ist
+//   Rakete, Pistole  Q schießt zur Maus, gehalten feuert es weiter
+//   Bombe            Q halten lädt auf, Richtung und Startpunkt stehen beim
+//                    Drücken fest; loslassen sprengt dort, wo der Zielkreis ist
 //   Blitze           solange Q gedrückt ist
-//   Geist            Rechtsklick fährt am Rand zur nächsten Stelle, Q wirft so weit,
-//                    wie die Maus von der Wand weg ist
+//   Geist            Rechtsklick fährt am Rand zur nächsten Stelle, Q halten
+//                    wirft weiter, loslassen wirft
 
 import { solidAt } from './arenas.js';
 import { moveIndex, moveAngle, angleDiff, circleInWall, pushOutOfWalls, rimNearest, rimPoint, rimLength, MOVE_DIRS } from './physics.js';
 import { TANK_R, DT } from './config.js';
 
 const NEIGHBORS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
-const ALIGNED = 0.045; // so genau muss der Turm zur Maus zeigen
-const BUFFER_MS = 1000; // so lange wartet ein Druck auf Q darauf
 const STUCK_MS = 600;
 
 // Freie Bahn für den Panzer von a nach b?
@@ -87,14 +85,7 @@ export function createPilot() {
   let plannedFor = '';
   let rimGoal = null; // Ziel des Geistes auf dem Rand
   let lastMove = 0;
-  let pending = 0; // Q gedrückt: bis dahin auf den Turm warten
-  let lob = false; // Bombe lädt auf Q hin auf
-  let lastCd = 0;
-  let lastCh = 0;
-  let qWas = false;
-  let tp = null;
   let goalTp = null; // für welchen Panzer (oder Geist) das Ziel gilt
-  let lastSeq = null;
   let check = { x: 0, y: 0, at: 0, tries: 0 };
 
   function cancel() {
@@ -193,82 +184,25 @@ export function createPilot() {
     // Ein Bild: liefert { move, aim, fire }. `cursor`: Mauspunkt in Feldern
     // oder null; `q`: Q gedrückt; `mouseAim`: der Turm folgt der Maus.
     steer(state, { cursor, q, mouseAim, now }) {
-      const out = { move: 0, aim: null, fire: false };
+      const out = { move: 0, aim: null, fire: q };
       const { arena, tank, ghost, vehicle } = state;
       // neu eingestiegen oder Geist geworden: alte Ziele gelten nicht mehr
       if (state.tp !== goalTp) cancel();
-      if (state.tp !== tp) {
-        tp = state.tp;
-        pending = 0;
-        lob = false;
-      }
-      const pressed = q && !qWas;
-      qWas = q;
-      // Ist seit dem letzten Bild ein Schritt vergangen? Sonst kann die Ladung nicht gewachsen sein.
-      const ticked = state.seq !== lastSeq;
-      lastSeq = state.seq;
-      if (pressed) pending = now + BUFFER_MS;
-      const wants = q || now < pending;
-
       if (state.ghostOn) {
         goal = null;
         out.move = driveGhost(arena, ghost, state.ghostParams);
-        if (!cursor) return out;
-        const at = rimPoint(arena, ghost.s);
-        const reach = (cursor.x - at.x) * at.nx + (cursor.y - at.y) * at.ny;
-        if (ghost.ch > 0 && lob) {
-          // aufladen, bis die Wurfweite zur Maus passt, dann loslassen
-          const per = state.ghostParams.charge * DT;
-          out.fire = ghost.ch + per * 0.5 < reach && !(ticked && ghost.ch === lastCh);
-          if (ticked) lastCh = ghost.ch;
-          if (!out.fire) {
-            lob = false;
-            pending = 0;
-          }
-        } else if (wants && ghost.cd <= 0) {
-          out.fire = true;
-          lob = true;
-          lastCh = -1;
-        }
         return out;
       }
-
       rimGoal = null;
       if (!state.live) {
         cancel();
         return out;
       }
       out.move = driveTank(arena, tank, vehicle, now);
-      if (!cursor) return out;
-      const angle = Math.atan2(cursor.y - tank.y, cursor.x - tank.x);
-      const far = Math.hypot(cursor.x - tank.x, cursor.y - tank.y) > 0.3;
-      if (mouseAim && far) out.aim = angle;
-      const w = vehicle.weapon;
-      const aligned = !far || Math.abs(angleDiff(angle, tank.a)) < ALIGNED;
-      if (w.kind === 'zap') out.fire = q || now < pending - BUFFER_MS + 200;
-      else if (w.kind === 'mortar') {
-        if (tank.ch > 0 && lob) {
-          // Der Zielkreis wandert vom Startpunkt geradeaus: loslassen, wenn er auf Höhe der Maus ist
-          const reach = (cursor.x - tank.ox) * Math.cos(tank.ca) + (cursor.y - tank.oy) * Math.sin(tank.ca);
-          const per = w.charge * DT;
-          // … oder wenn er nicht weiter kann (Reichweite, Rand)
-          out.fire = tank.ch + per * 0.5 < reach && !(ticked && tank.ch === lastCh);
-          if (ticked) lastCh = tank.ch;
-          if (!out.fire) {
-            lob = false;
-            pending = 0;
-          }
-        } else if (wants && aligned && tank.cd <= 0 && !(tank.ch > 0)) {
-          out.fire = true;
-          lob = true;
-          lastCh = -1;
-        }
-      } else {
-        out.fire = wants && aligned;
-        // ein einzelner Druck gilt für genau einen Schuss
-        if (tank.cd > lastCd && !q) pending = 0;
+      // Ganz nah am Panzer wäre die Richtung zufällig: dann bleibt der Turm, wie er ist
+      if (cursor && mouseAim && Math.hypot(cursor.x - tank.x, cursor.y - tank.y) > 0.3) {
+        out.aim = Math.atan2(cursor.y - tank.y, cursor.x - tank.x);
       }
-      lastCd = tank.cd;
       return out;
     },
   };

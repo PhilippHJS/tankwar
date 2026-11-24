@@ -1,18 +1,17 @@
 // Steuerung: Maus, Tastatur und Gamepad, alles gleichzeitig.
 //
 // Mit der Maus wie in LoL oder Dota: Rechtsklick fährt dorthin (gehalten folgt
-// der Panzer der Maus), Q schießt dorthin, wo die Maus ist, der Turm zeigt
-// immer zur Maus. Was daraus wird, rechnet pilot.js aus.
+// der Panzer der Maus), der Turm zeigt immer sofort zur Maus, Q ist der Abzug
+// wie die Leertaste. Was daraus wird, rechnet pilot.js aus.
 //
 // Mit der Tastatur sind Fahren und Zielen getrennt: WASD fährt, die
 // Pfeiltasten richten den Turm aus, die Leertaste schießt. Gedrückt halten
 // feuert, sobald wieder geladen ist. WASD bricht eine Fahrt per Mausklick ab;
 // wer die Pfeiltasten benutzt, zielt damit, bis er die Maus wieder bewegt.
 //
-// Pfeiltasten geben eine Richtung vor: Rechts dreht den Turm nach rechts, bis
-// er dort ankommt, dann bleibt er stehen. Zwei Pfeile zugleich ergeben die
-// Richtung dazwischen. Lässt man los, bleibt der Turm, wo er gerade ist. So
-// lassen sich auch Winkel zwischen den acht Richtungen einstellen.
+// Pfeiltasten geben eine Richtung vor: Rechts richtet den Turm nach rechts aus.
+// Zwei Pfeile zugleich ergeben die Richtung dazwischen. Lässt man los, bleibt
+// der Turm, wo er gerade ist.
 //
 // Gelesen wird die Lage der Taste, nicht ihr Buchstabe, damit WASD auf jeder
 // Tastatur an derselben Stelle liegt.

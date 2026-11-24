@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createPilot, findPath, clearPath } from '../js/pilot.js';
 import { arenaOf, ARENAS, solidAt } from '../js/arenas.js';
 import {
-  newTank, stepTank, packInput, aimIndex, blastPoint, newGhost, stepGhost, rimPoint, rimNearest, ghostTarget, angleDiff, circleInWall, MODE,
+  newTank, stepTank, packInput, aimIndex, blastPoint, newGhost, stepGhost, rimPoint, rimNearest, angleDiff, circleInWall, MODE,
 } from '../js/physics.js';
 import { vehicleFor, ghostFor, TANK_R, TICK_RATE } from '../js/config.js';
 
@@ -68,60 +68,66 @@ test('ein Klick in eine Wand fährt so nah wie möglich heran', () => {
   assert.ok(!circleInWall(arena, tank.x, tank.y, TANK_R - 0.01));
 });
 
-test('Q: der Turm dreht zur Maus, geschossen wird erst, wenn er dorthin zeigt', () => {
+test('der Turm zeigt sofort zur Maus, Q schießt genau dorthin', () => {
   const arena = arenaOf(0);
   for (const kind of [0, 1]) {
     const vehicle = vehicleFor(kind, 1);
     const tank = newTank(5.5, 6.5, 0, vehicle);
     const pilot = createPilot();
-    const cursor = { x: 5.5 - 3, y: 6.5 + 2 }; // links unten, weit weg vom Turm
+    const cursor = { x: 5.5 - 3, y: 6.5 + 2 }; // links unten
     const want = Math.atan2(2, -3);
     let at = null;
     drive(arena, tank, vehicle, pilot, {
-      cursor, mouseAim: true, seconds: 3, q: (i) => i === 2, // nur ein kurzer Druck
+      cursor, mouseAim: true, seconds: 1, q: (i) => i === 2, // nur ein kurzer Druck
       onShot: (shot, i) => {
         at = { a: tank.a, i };
         return false;
       },
     });
     assert.ok(at, `${vehicle.name} schießt`);
-    assert.ok(Math.abs(angleDiff(at.a, want)) < 0.05, `${vehicle.name} zur Maus: ${at.a.toFixed(3)} statt ${want.toFixed(3)}`);
-    assert.ok(at.i > 10, 'wartet auf den Turm');
+    assert.equal(at.i, 2, 'sofort');
+    assert.ok(Math.abs(angleDiff(at.a, want)) < 0.01, `${vehicle.name} zur Maus: ${at.a.toFixed(3)} statt ${want.toFixed(3)}`);
   }
+  // ohne Trägheit: ein Schritt, und der Turm zeigt in die neue Richtung
+  const vehicle = vehicleFor(0, 1);
+  const tank = newTank(5.5, 6.5, 0, vehicle);
+  stepTank(arena, tank, packInput(0, aimIndex(2.5), false), vehicle, MODE.PLAY);
+  assert.ok(Math.abs(angleDiff(tank.a, 2.5)) < 0.01);
 });
 
-test('Q mit dem Böller: die Bombe landet dort, wo die Maus ist', () => {
+test('Böller: Q halten lädt auf, Fahren und Maus ändern dann nichts mehr, loslassen sprengt', () => {
   const arena = arenaOf(0);
   const vehicle = vehicleFor(2, 1);
-  for (const cursor of [{ x: 9.2, y: 4.1 }, { x: 3.3, y: 9.8 }, { x: 8, y: 6.5 }]) {
-    const tank = newTank(5.5, 6.5, 0, vehicle);
-    const pilot = createPilot();
-    let landed = null;
-    drive(arena, tank, vehicle, pilot, {
-      cursor, mouseAim: true, seconds: 5, q: (i) => i === 1,
-      onShot: (shot) => {
-        landed = blastPoint(arena, tank, shot);
-        return false;
-      },
-    });
-    assert.ok(landed, 'geworfen');
-    assert.ok(Math.hypot(landed.x - cursor.x, landed.y - cursor.y) < 0.2, `${landed.x.toFixed(2)}, ${landed.y.toFixed(2)}`);
-  }
-  // Weiter weg, als sie reicht: so weit es geht
-  const tank = newTank(2.5, 6.5, 0, vehicle);
+  const tank = newTank(5.5, 6.5, 0, vehicle);
   const pilot = createPilot();
-  let dist = null;
-  drive(arena, tank, vehicle, pilot, {
-    cursor: { x: 20.5, y: 6.5 }, mouseAim: true, seconds: 5, q: (i) => i === 1,
-    onShot: (shot) => {
-      dist = shot;
-      return false;
-    },
-  });
-  assert.ok(Math.abs(dist - vehicle.weapon.range) < 0.1, `Weite ${dist}`);
+  const hold = 70; // Schritte mit gedrücktem Q
+  let cursor = { x: 9.5, y: 4.5 };
+  const dir = Math.atan2(4.5 - 6.5, 9.5 - 5.5);
+  let landed = null;
+  let from = null;
+  for (let i = 0; i < 3 * TICK_RATE && !landed; i += 1) {
+    const q = i >= 1 && i <= hold;
+    if (i === 10) {
+      // mitten im Aufladen: woanders hinzeigen und wegfahren
+      cursor = { x: 2.5, y: 11.5 };
+      pilot.order({ arena, live: true, tp: 'x' }, 3.5, 9.5);
+    }
+    const state = { arena, tank, live: true, ghostOn: false, vehicle, tp: 'x', seq: i };
+    const out = pilot.steer(state, { cursor, q, mouseAim: true, now: i * MS });
+    if (i === 1) from = { x: tank.x, y: tank.y };
+    const shot = stepTank(arena, tank, packInput(out.move, out.aim === null ? -1 : aimIndex(out.aim), out.fire), vehicle, MODE.PLAY);
+    if (shot) landed = { at: blastPoint(arena, tank, shot), dist: shot, i };
+  }
+  assert.ok(landed, 'gesprengt');
+  assert.equal(landed.i, hold + 1, 'beim Loslassen');
+  assert.ok(Math.hypot(tank.x - from.x, tank.y - from.y) > 0.5, 'ist dabei gefahren');
+  const want = { x: from.x + Math.cos(dir) * landed.dist, y: from.y + Math.sin(dir) * landed.dist };
+  assert.ok(Math.hypot(landed.at.x - want.x, landed.at.y - want.y) < 0.05, 'Richtung vom Drücken');
+  const grown = 0.6 + vehicle.weapon.charge * (hold - 1) / TICK_RATE;
+  assert.ok(Math.abs(landed.dist - grown) < 0.05, `so weit, wie lange gehalten: ${landed.dist.toFixed(2)} statt ${grown.toFixed(2)}`);
 });
 
-test('als Geist: Rechtsklick fährt am Rand zur nächsten Stelle, Q wirft so weit wie zur Maus', () => {
+test('als Geist: Rechtsklick fährt am Rand zur nächsten Stelle, Q halten wirft weiter', () => {
   const arena = arenaOf(0);
   const params = ghostFor(1);
   const ghost = newGhost(rimNearest(arena, 3, 0.5));
@@ -137,16 +143,13 @@ test('als Geist: Rechtsklick fährt am Rand zur nächsten Stelle, Q wirft so wei
   const at = rimPoint(arena, ghost.s);
   const want = rimPoint(arena, rimNearest(arena, click.x, click.y));
   assert.ok(Math.hypot(at.x - want.x, at.y - want.y) < 0.15, `${at.x}, ${at.y}`);
-  // werfen: 6 Felder nach innen
-  const cursor = { x: at.x + at.nx * 6, y: at.y + at.ny * 6 };
   let thrown = null;
   for (let i = 0; i < 4 * TICK_RATE && thrown === null; i += 1) {
     state.seq = 1000 + i;
-    const out = pilot.steer(state, { cursor, q: i === 1, mouseAim: true, now: (1000 + i) * MS });
+    const out = pilot.steer(state, { cursor: { x: 3, y: 3 }, q: i >= 1 && i <= 60, mouseAim: true, now: (1000 + i) * MS });
     const dist = stepGhost(arena, ghost, packInput(out.move, -1, out.fire), params, MODE.PLAY);
     if (dist) thrown = dist;
   }
-  assert.ok(thrown !== null);
-  const lands = ghostTarget(arena, ghost, thrown);
-  assert.ok(Math.hypot(lands.x - cursor.x, lands.y - cursor.y) < 0.2, `Weite ${thrown}`);
+  const grown = params.min + params.charge * 59 / TICK_RATE;
+  assert.ok(Math.abs(thrown - grown) < 0.05, `Weite ${thrown}`);
 });

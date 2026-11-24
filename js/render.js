@@ -1542,21 +1542,14 @@ export function createRenderer(canvas) {
     }
   }
 
-  function drawAim(p, view, cursor) {
+  function drawAim(p, view) {
     const vehicle = VEHICLES[p.vehicle] || VEHICLES[0];
     const w = vehicle.weapon;
     let points;
-    let lands = null;
     if (w.kind === 'rocket') points = traceRocket(view.arena, p, w, 1, 1.6);
     else if (w.kind === 'gun') {
       const ray = gunRay(view.arena, p, w.range);
       points = [{ x: ray.sx, y: ray.sy }, { x: ray.sx + ray.dx * ray.len, y: ray.sy + ray.dy * ray.len }];
-    } else if (w.kind === 'mortar' && !(p.ch > 0) && cursor) {
-      // Mit der Maus: dort landet die Bombe auf Q (höchstens so weit, wie sie reicht)
-      const a = Math.atan2(cursor.y - p.y, cursor.x - p.x);
-      const end = blastPoint(view.arena, { ox: p.x, oy: p.y, ca: a }, Math.min(w.range, Math.hypot(cursor.x - p.x, cursor.y - p.y)));
-      points = [{ x: p.x + Math.cos(a) * 0.6, y: p.y + Math.sin(a) * 0.6 }, end];
-      lands = end;
     } else if (w.kind === 'mortar' && !(p.ch > 0)) {
       // Richtung, in die der Zielkreis beim Drücken wandern wird
       const end = blastPoint(view.arena, { ox: p.x, oy: p.y, ca: p.a }, w.range);
@@ -1571,14 +1564,6 @@ export function createRenderer(canvas) {
       ctx.beginPath();
       ctx.moveTo(sx(points[i].x), sy(points[i].y));
       ctx.lineTo(sx(points[i + 1].x), sy(points[i + 1].y));
-      ctx.stroke();
-    }
-    if (lands) {
-      ctx.setLineDash([Math.max(2, S * 0.08), Math.max(3, S * 0.1)]);
-      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-      ctx.lineWidth = Math.max(1.5, S * 0.04);
-      ctx.beginPath();
-      ctx.arc(sx(lands.x), sy(lands.y), w.radius * S, 0, TAU);
       ctx.stroke();
     }
     ctx.restore();
@@ -1766,7 +1751,7 @@ export function createRenderer(canvas) {
       }
       const me = view.slot >= 0 ? view.players[view.slot] : null;
       const meLive = me && me.in && me.dead === 0 && me.lives > 0;
-      if (opts.aim && meLive && (view.phase === PHASE.PLAY || view.phase === PHASE.COUNTDOWN)) drawAim(me, view, opts.cursor);
+      if (opts.aim && meLive && (view.phase === PHASE.PLAY || view.phase === PHASE.COUNTDOWN)) drawAim(me, view);
       drawMarks(t);
       // Eigener Panzer fast kaputt: er qualmt
       if (opts.tags && meLive && me.maxHp && me.hp / me.maxHp < 0.3) {

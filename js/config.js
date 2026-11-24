@@ -29,6 +29,8 @@ export const BARREL = 0.6; // von der Mitte bis zur Mündung
 //           sprengt dort; Startpunkt und Richtung gelten ab dem Drücken
 //   zap     Leertaste halten trifft alle Gegner im Umkreis, verbraucht Mana
 // `stats`: Balken in der Auswahl, 1 bis 5.
+// `turret`: Der Turm von Spielern zeigt sofort aufs Ziel. Nur Bots drehen ihn
+// so schnell, sonst wären sie kaum zu schlagen.
 const HULL = { health: 100, accel: 8, brake: 14, turn: 3.4, turret: 3.4 };
 export const VEHICLES = [
   {
@@ -68,7 +70,7 @@ export const VEHICLES = [
     ...HULL,
     id: 'boeller',
     name: 'Böller',
-    hint: 'Q wirft die Bombe zur Maus: Der Zielkreis wandert erst hin, dann knallt es dort. Geht durch Wände und trifft auch dich.',
+    hint: 'Q halten schiebt den Zielkreis in Richtung Maus hinaus, loslassen sprengt dort. Geht durch Wände und trifft auch dich.',
     speed: 2,
     weapon: {
       kind: 'mortar',

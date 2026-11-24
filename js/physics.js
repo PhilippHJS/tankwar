@@ -41,7 +41,7 @@ export function moveIndex(dx, dy) {
 }
 export const moveAngle = (move) => wrap(((move - 1) / MOVE_DIRS) * TAU);
 
-function turnToward(from, to, max) {
+export function turnToward(from, to, max) {
   const d = angleDiff(to, from);
   if (Math.abs(d) <= max) return wrap(to);
   return wrap(from + Math.sign(d) * max);
@@ -135,9 +135,10 @@ export const MODE = { AIM: 0, PLAY: 1, CRUISE: 2 };
 // Ein Schritt. `others`: andere Panzer, an denen dieser anstößt.
 // Gibt zurück, ob in diesem Schritt geschossen wurde.
 export function stepTank(arena, tank, code, vehicle, mode, others = []) {
-  // Lädt der Böller auf, lässt sich der Turm nicht drehen (siehe unten)
+  // Der Turm zeigt sofort in die gewünschte Richtung, ohne Trägheit. Lädt der
+  // Böller auf, lässt er sich nicht drehen (siehe unten).
   const aim = inputAim(code);
-  if (aim >= 0 && !(tank.ch > 0)) tank.a = turnToward(tank.a, aimAngle(aim), vehicle.turret * DT);
+  if (aim >= 0 && !(tank.ch > 0)) tank.a = aimAngle(aim);
 
   // Fahren: Die Wanne dreht sich zur gewünschten Richtung. Liegt die eher hinter
   // dem Panzer, fährt er rückwärts, statt umständlich zu wenden.

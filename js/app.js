@@ -610,7 +610,7 @@ function updateHud(view, t) {
   let down = '';
   if (view.phase === PHASE.PLAY || view.phase === PHASE.COUNTDOWN) {
     if (!me || !me.in) down = 'Du schaust zu und steigst in der nächsten Runde ein.';
-    else if (me.ghost) down = 'Du bist ein Geist. Rechtsklick fährt am Rand entlang, Q wirft eine Bombe zur Maus.<small>Oder WASD und Leertaste halten. Gibst du damit einem Gegner den Rest, kehrst du mit einem Leben zurück.</small>';
+    else if (me.ghost) down = 'Du bist ein Geist. Rechtsklick fährt am Rand entlang, Q halten und loslassen wirft eine Bombe, je länger, desto weiter.<small>Gibst du damit einem Gegner den Rest, kehrst du mit einem Leben zurück.</small>';
     else if (me.lives <= 0) down = view.sd ? 'Raus. Im Sudden Death schaust du nur noch zu.' : 'Alle Leben verloren.';
     else if (me.dead > 0 && now() < rebornUntil) down = 'Du kehrst zurück!';
     else if (me.dead > 0) {
@@ -698,10 +698,8 @@ function updateHud(view, t) {
 // Tastatur und Gamepad gehen vor: WASD bricht eine Fahrt ab, die Pfeiltasten
 // zielen statt der Maus.
 const pilot = createPilot();
-let cursor = null; // Mauspunkt in Feldern, wenn der Turm der Maus folgt
 function inputCode(t) {
   const c = controls.read();
-  cursor = null;
   if (!session) return 0;
   const state = session.client.pilotState();
   const at = c.pointer ? renderer.toWorld(c.pointer.x, c.pointer.y) : null;
@@ -715,7 +713,6 @@ function inputCode(t) {
     }
   }
   const p = pilot.steer(state, { cursor: at, q: c.q, mouseAim: c.mouseAim, now: t });
-  if (c.mouseAim) cursor = at;
   const move = keys ? moveIndex(c.mx, c.my) : p.move;
   const aim = c.aim !== null ? c.aim : p.aim;
   return packInput(move, aim === null ? -1 : aimIndex(aim), c.fire || p.fire);
@@ -813,7 +810,7 @@ function drawFrame(t) {
     }
     sfx.frame(view, screen === 'game');
     tickFeed(t);
-    renderer.draw(view, t, { tags: true, aim: screen === 'game', cursor: screen === 'game' ? cursor : null });
+    renderer.draw(view, t, { tags: true, aim: screen === 'game' });
   } else {
     sfx.frame(null, false);
     demo.client.frame(t);

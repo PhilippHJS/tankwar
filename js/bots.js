@@ -16,7 +16,7 @@
 import { solidAt } from './arenas.js';
 import { makeRng } from './rng.js';
 import {
-  packInput, moveIndex, aimIndex, launchRocket, stepRocket, copyRocket, angleDiff, castRay, inZapReach, blastPoint, rimPoint, rimLength, IDLE,
+  packInput, moveIndex, aimIndex, launchRocket, stepRocket, copyRocket, angleDiff, castRay, inZapReach, blastPoint, rimPoint, rimLength, IDLE, turnToward,
 } from './physics.js';
 import { alive, vehicleOf, ghostActive, ghostParams, PHASE, EVENT } from './sim.js';
 import { TANK_R, ROCKET_R, DT, TICK_RATE, SUDDEN } from './config.js';
@@ -442,7 +442,9 @@ export function createBot(slot, seed) {
       last = { x: tank.x, y: tank.y, tick: t };
     }
 
-    return packInput(moveIndex(dx, dy), aimIndex(aimTo), fire);
+    // Der Turm folgt sofort, Bots drehen ihn aber nur mit Turmtempo, wie früher alle
+    const aimNow = turnToward(tank.a, aimTo, vehicleOf(sim, me).turret * DT);
+    return packInput(moveIndex(dx, dy), aimIndex(aimNow), fire);
   }
 
   return { think };

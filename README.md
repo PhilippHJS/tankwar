@@ -11,16 +11,18 @@ Panzerschlacht für bis zu vier im Browser, jeder am eigenen Rechner und ohne An
 | Was | Maus (wie LoL oder Dota) | Tastatur | Gamepad |
 | --- | --- | --- | --- |
 | Fahren | Rechtsklick dorthin, gehalten folgt der Panzer der Maus | WASD | linker Stick oder Steuerkreuz |
-| Zielen | der Turm zeigt immer zur Maus | Pfeiltasten | rechter Stick |
-| Schießen | Q schießt zur Maus | Leertaste, je nach Fahrzeug tippen oder halten | A, RB oder RT |
+| Zielen | der Turm zeigt immer sofort zur Maus | Pfeiltasten | rechter Stick |
+| Schießen | Q, je nach Fahrzeug tippen oder halten | Leertaste, genauso | A, RB oder RT |
 
 Alles geht gleichzeitig. WASD bricht eine Fahrt per Rechtsklick ab. Wer die Pfeiltasten benutzt, zielt damit, bis er die Maus wieder bewegt.
 
-Mit der Maus: Ein Rechtsklick fährt auf dem kürzesten Weg um Wände herum dorthin und hält an. Ein grüner Kreis zeigt kurz, wohin. Ein Klick in eine Wand fährt so nah wie möglich heran. Q schießt, sobald der Turm zur Maus zeigt. Er dreht sich nur mit seinem Tempo, ein Druck auf Q wartet deshalb bis zu einer Sekunde darauf und auch aufs Nachladen. Q gehalten feuert weiter. Beim Böller lädt Q die Bombe auf und lässt los, sobald der Zielkreis bei der Maus ist; vorher zeigt ein gestrichelter Kreis, wo sie landen wird. Der Zitteraal blitzt, solange Q gedrückt ist. Als Geist fährt ein Rechtsklick am Rand zur nächsten Stelle, und Q wirft so weit, wie die Maus von der Wand weg ist.
+Der Turm hat keine Trägheit: Er zeigt immer sofort in die gewünschte Richtung. Nur Bots drehen ihn mit Turmtempo, sonst wären sie kaum zu schlagen.
+
+Mit der Maus: Ein Rechtsklick fährt auf dem kürzesten Weg um Wände herum dorthin und hält an. Ein grüner Kreis zeigt kurz, wohin. Ein Klick in eine Wand fährt so nah wie möglich heran. Q schießt genau zur Maus, gehalten feuert es weiter. Beim Böller lädt Q auf, solange man es hält: Startpunkt und Richtung (zur Maus) stehen beim Drücken fest, danach ändern Fahren, Mausbewegung und Klicks nichts mehr am Zielkreis. Loslassen sprengt dort. Der Zitteraal blitzt, solange Q gedrückt ist. Als Geist fährt ein Rechtsklick am Rand zur nächsten Stelle, Q halten wirft weiter, loslassen wirft.
 
 Mit der Tastatur sind Fahren und Zielen getrennt: Die Wanne fährt in die gewünschte Richtung, der Turm zeigt unabhängig davon aufs Ziel. Liegt die Richtung eher hinter dem Panzer, fährt er rückwärts, statt umständlich zu wenden.
 
-Ein Pfeil dreht den Turm in seine Richtung, bis er dort ankommt, dann bleibt er stehen. Zwei Pfeile zugleich zielen schräg dazwischen. Lässt man los, bleibt der Turm, wo er gerade ist, so lassen sich auch Winkel dazwischen einstellen. Eine gestrichelte Linie zeigt, wohin der Schuss geht, ein Balken unter dem eigenen Panzer Nachladen, Magazin oder Mana.
+Ein Pfeil richtet den Turm in seine Richtung aus, zwei Pfeile zugleich zielen schräg dazwischen. Lässt man los, bleibt der Turm, wo er ist. Eine gestrichelte Linie zeigt, wohin der Schuss geht, ein Balken unter dem eigenen Panzer Nachladen, Magazin oder Mana.
 
 Das Gerät des Gastgebers führt den Spielstand. Seine Seite muss offen bleiben, solange gespielt wird. Wer neu lädt oder kurz die Verbindung verliert, landet wieder auf seinem Platz, bis dahin fährt ein Bot für ihn.
 
@@ -30,7 +32,7 @@ Das Gerät des Gastgebers führt den Spielstand. Seine Seite muss offen bleiben,
 - Wer abgeschossen wird, ist 5 Sekunden raus und steigt dann am Startplatz wieder ein, der am weitesten von den anderen weg ist. Danach ist er 2 Sekunden unverwundbar.
 - Kein Eigenbeschuss: Eigene Raketen, Schüsse und Blitze tun dem eigenen Panzer nichts. Einzige Ausnahme ist die Bombe des Böllers.
 - Gespielt wird auf fünf Arenen. Zu Beginn jedes Spiels wird ihre Reihenfolge gemischt, jede Runde kommt die nächste, nach der fünften geht es von vorn los.
-- Wer alle Leben verloren hat, ist nicht einfach raus: Kurz darauf fährt er als Geist auf dem Rand der Arena herum (Rechtsklick oder WASD) und wirft kleine Bomben quer zur Wand nach innen (Q zur Maus, oder Leertaste: halten wirft weiter), bis 12 Felder. Die Bombe fliegt über Wände hinweg, landet, blinkt kurz und explodiert dann (14 Schaden in der Mitte, 6 am Rand, Radius 1,1). Danach dauert es 4,5 s bis zum nächsten Wurf. Gibt ein Geist damit einem Gegner den Rest, kehrt er mit einem Leben und 30 % Lebensleiste an einem freien Startplatz zurück, kurz geschützt.
+- Wer alle Leben verloren hat, ist nicht einfach raus: Kurz darauf fährt er als Geist auf dem Rand der Arena herum (Rechtsklick oder WASD) und wirft kleine Bomben quer zur Wand nach innen (Q oder Leertaste: halten wirft weiter), bis 12 Felder. Die Bombe fliegt über Wände hinweg, landet, blinkt kurz und explodiert dann (14 Schaden in der Mitte, 6 am Rand, Radius 1,1). Danach dauert es 4,5 s bis zum nächsten Wurf. Gibt ein Geist damit einem Gegner den Rest, kehrt er mit einem Leben und 30 % Lebensleiste an einem freien Startplatz zurück, kurz geschützt.
 - Die Runde endet, wenn nur noch einer Leben hat. Erwischen sich die letzten beiden gleichzeitig, gewinnen beide.
 - Läuft die Zeit ab, beginnt der **Sudden Death**, siehe unten. Eine Wertung nach Leben oder Lebensleiste gibt es nicht mehr.
 
@@ -71,8 +73,8 @@ Jedes Fahrzeug hat seine eigene Form, damit man es im Getümmel erkennt: der Pre
 | --- | --- | --- |
 | Prellbock | 2,2 | **Rakete**: fliegt 5 Felder/s, prallt von jeder Wand ab und verpufft nach 3,8 s. 34 Schaden, 1,5 s Nachladen. |
 | Kimme | 2,2 | **Pistole**: trifft sofort, bis zur ersten Wand, höchstens 8 Felder weit. 12 Schaden, alle 0,3 s ein Schuss, 6 Schuss pro Magazin, dann 2 s Nachladen. |
-| Böller | 2,0 | **Bombe**: Beim Drücken der Leertaste werden Startpunkt und Richtung festgehalten. Selbst drehen lässt sich der Turm dann nicht, er zeigt von allein immer auf den Zielkreis. Solange man hält, wandert der Zielkreis mit 4 Feldern/s geradeaus hinaus, bis 9 Felder weit oder bis zum Rand. Fahren ändert daran nichts. Loslassen sprengt dort sofort, auch hinter Wänden. 50 Schaden in der Mitte, 20 am Rand (Radius 1,3), trifft auch den eigenen Panzer. 2,5 s Nachladen. Den Zielkreis sehen alle. |
-| Zitteraal | 3,0 | **Blitze**: Leertaste halten trifft alle Gegner im Umkreis von 2,2 Feldern, die nicht hinter einer Wand stehen, sechsmal pro Sekunde mit je 6 Schaden. Volles Mana reicht für 3 s. Ist es leer, erst loslassen. Aufgeladen wird nach einer halben Sekunde Pause, von leer auf voll in 6 s. |
+| Böller | 2,0 | **Bombe**: Beim Drücken von Q oder der Leertaste werden Startpunkt und Richtung festgehalten. Selbst drehen lässt sich der Turm dann nicht, er zeigt von allein immer auf den Zielkreis. Solange man hält, wandert der Zielkreis mit 4 Feldern/s geradeaus hinaus, bis 9 Felder weit oder bis zum Rand. Fahren ändert daran nichts. Loslassen sprengt dort sofort, auch hinter Wänden. 50 Schaden in der Mitte, 20 am Rand (Radius 1,3), trifft auch den eigenen Panzer. 2,5 s Nachladen. Den Zielkreis sehen alle. |
+| Zitteraal | 3,0 | **Blitze**: Q oder Leertaste halten trifft alle Gegner im Umkreis von 2,2 Feldern, die nicht hinter einer Wand stehen, sechsmal pro Sekunde mit je 6 Schaden. Volles Mana reicht für 3 s. Ist es leer, erst loslassen. Aufgeladen wird nach einer halben Sekunde Pause, von leer auf voll in 6 s. |
 
 Gedacht ist ein Kreislauf: Der Zitteraal schlägt den Böller aus der Nähe, der Böller holt alle hinter Deckung hervor, die Kimme erwischt den Zitteraal beim Anfahren, und der Prellbock schlägt die Kimme mit Schüssen über die Bande. Alle Werte stehen in `VEHICLES` in `js/config.js`, neue Fahrzeuge kommen dort dazu.
 
