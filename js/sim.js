@@ -4,24 +4,28 @@
 // Jeder hat pro Runde drei Leben und eine volle Lebensleiste. Ist die leer,
 // ist ein Leben weg, der Panzer fünf Sekunden raus und steigt dann an einem
 // freien Startplatz kurz unverwundbar wieder ein. Eigene Raketen treffen den
-// eigenen Panzer nicht. Die Runde endet, wenn nur noch einer Leben hat, oder
-// nach Ablauf der Zeit: Dann gewinnt, wer die meisten Leben hat, bei Gleichstand
-// mehr Lebensleiste, sonst gewinnen mehrere. Jeder Sieger bekommt einen Punkt.
-// Gespielt wird, bis jemand die eingestellten Punkte erreicht.
+// eigenen Panzer nicht. Die Runde endet, wenn nur noch einer Leben hat.
+// Ist die Zeit um, beginnt der Sudden Death (siehe SUDDEN und stones.js):
+// jeder nur noch mit seinem letzten Leben, keine Geister, und von außen fallen
+// Steine, bis einer übrig ist. Erwischt es die Letzten im selben Schritt,
+// gewinnen sie gemeinsam. Jeder Sieger bekommt einen Punkt. Gespielt wird,
+// bis jemand die eingestellten Punkte erreicht.
 
 import { ARENAS, arenaOf } from './arenas.js';
 import { makeRng } from './rng.js';
 import {
   newTank, stepTank, launchRocket, stepRocket, gunRay, rayHitsCircle, blastPoint, blastDamage, inZapReach, MODE,
-  newGhost, stepGhost, rimPoint, rimNearest, ghostTarget, ghostDamage,
+  newGhost, stepGhost, rimPoint, rimNearest, ghostTarget, ghostDamage, pushOutOfWalls,
 } from './physics.js';
+import { withStones, dropStones, stonesBy, stoneOrder, cellLands, crushes } from './stones.js';
 import {
   MAX_PLAYERS, TICK_RATE, LIVES, RESPAWN_TICKS, SHIELD_TICKS, COUNTDOWN_TICKS, RESULT_TICKS, EVENT_TICKS,
-  TANK_R, ROCKET_R, DEFAULT_LEVELS, DEFAULT_RULES, cleanLevels, rulesFor, cleanVehicle, vehicleFor, ghostFor, GHOST,
+  TANK_R, ROCKET_R, DEFAULT_LEVELS, DEFAULT_RULES, cleanLevels, rulesFor, cleanVehicle, vehicleFor, ghostFor, GHOST, SUDDEN,
 } from './config.js';
 
 export const PHASE = { LOBBY: 0, COUNTDOWN: 1, PLAY: 2, RESULT: 3, OVER: 4 };
-// Treffer, Treffer auf den Schutz, Abschuss (item: verbleibende Leben),
+// Treffer, Treffer auf den Schutz, Abschuss (item: verbleibende Leben; by -1:
+// von einem Stein erwischt),
 // Rakete verpufft, Wiedereinstieg, Pistolenschuss (von x, y bis x2, y2),
 // Bombe (item: Radius in Hundertsteln), Blitz (of: getroffen, item: Schaden),
 // Geisterbombe explodiert (item: Radius in Hundertsteln), Geist kehrt zurück
@@ -40,6 +44,7 @@ export function createSim(count = MAX_PLAYERS) {
     arena: arenaOf(0),
     order: ARENAS.map((_, i) => i), // Reihenfolge der Arenen in diesem Spiel
     field: 0, // so viele waren zu Beginn der Runde dabei
+    sd: 0, // Schritt, in dem der Sudden Death begann, 0: noch nicht
     // in: spielt in dieser Runde mit; dead: Schritte bis zum Wiedereinstieg;
     // shield: Restzeit des Schutzes; outAt: Schritt, in dem das letzte Leben
     // verloren ging; tp: zählt jeden Sprung an einen neuen Ort
@@ -65,7 +70,7 @@ export const alive = (player) => player.in && player.lives > 0 && player.dead ==
 export const ghostParams = (sim) => ghostFor(sim.rules.speed);
 // Ist dieser Spieler gerade ein Geist auf dem Rand?
 export function ghostActive(sim, p) {
-  if (!p.in || p.lives > 0 || p.gone) return false;
+  if (!p.in || p.lives > 0 || p.gone || sim.sd) return false;
   if (sim.phase !== PHASE.PLAY && sim.phase !== PHASE.RESULT) return false;
   return sim.tick - p.outAt >= Math.round(GHOST.delay * TICK_RATE);
 }
@@ -104,6 +109,7 @@ export function nextRound(sim, lineup) {
   sim.arena = arenaOf(sim.order[(sim.round - 1) % sim.order.length]);
   sim.phase = PHASE.COUNTDOWN;
   sim.phaseEnd = sim.tick + COUNTDOWN_TICKS;
+  sim.sd = 0;
   sim.rockets = [];
   sim.bombs = [];
   sim.winners = [];
@@ -138,6 +144,7 @@ export function nextRound(sim, lineup) {
 
 export function backToLobby(sim) {
   sim.phase = PHASE.LOBBY;
+  sim.sd = 0;
   sim.rockets = [];
   sim.bombs = [];
   sim.winners = [];
@@ -175,9 +182,45 @@ function freeSpawn(sim, me) {
   return best;
 }
 
+// Im Sudden Death: das Feld nächst `want`, das noch frei ist, mindestens
+// SUDDEN.safe Sekunden frei bleibt und nicht unter einem anderen Panzer liegt.
+// null, wenn es keins mehr gibt.
+function safeSpot(sim, want, me) {
+  const arena = sim.arena;
+  const until = sim.tick + SUDDEN.safe * TICK_RATE;
+  let best = null;
+  let bestD = Infinity;
+  for (let cy = 1; cy < arena.H - 1; cy += 1) {
+    for (let cx = 1; cx < arena.W - 1; cx += 1) {
+      if (arena.solid[cy * arena.W + cx]) continue;
+      if (cellLands(arena, sim.sd, sim.rules.speed, cx, cy) <= until) continue;
+      const x = cx + 0.5;
+      const y = cy + 0.5;
+      if (sim.players.some((q) => q !== me && alive(q) && Math.hypot(q.tank.x - x, q.tank.y - y) < TANK_R * 2 + 0.1)) continue;
+      const d = Math.hypot(x - want.x, y - want.y);
+      if (d < bestD) {
+        bestD = d;
+        best = { x, y, h: Math.atan2(arena.H / 2 - y, arena.W / 2 - x) };
+      }
+    }
+  }
+  return best;
+}
+
 function respawn(sim, p) {
   // Nach einer Wiedergeburt steht der Startplatz schon fest: Dorthin ist der Geist geflogen.
-  const spawn = p.spawnAt || freeSpawn(sim, p);
+  let spawn = p.spawnAt || freeSpawn(sim, p);
+  if (sim.sd) {
+    // Die Startplätze sind weg: so nah wie möglich daneben, wo noch Platz ist
+    spawn = safeSpot(sim, spawn, p);
+    if (!spawn) {
+      p.spawnAt = null;
+      p.reborn = false;
+      p.lives = 0;
+      p.outAt = sim.tick;
+      return;
+    }
+  }
   const reborn = p.reborn;
   p.spawnAt = null;
   p.reborn = false;
@@ -203,6 +246,15 @@ function hurt(sim, p, dmg, by, x, y, quiet = false, ghost = false) {
     if (!quiet) addEvent(sim, EVENT.HIT, by, p.slot, x, y, dmg);
     return true;
   }
+  destroy(sim, p, by);
+  const shooter = sim.players[by];
+  if (ghost && shooter && shooter !== p && shooter.in && shooter.lives <= 0 && !shooter.gone) revive(sim, shooter);
+  return true;
+}
+
+// Ein Leben weg. `by`: wer es war, -1 für einen Stein.
+function destroy(sim, p, by) {
+  p.hp = 0;
   p.lives -= 1;
   const shooter = sim.players[by];
   if (shooter && shooter !== p) shooter.kills += 1;
@@ -212,8 +264,6 @@ function hurt(sim, p, dmg, by, x, y, quiet = false, ghost = false) {
     p.outAt = sim.tick;
     p.ghost = newGhost(rimNearest(sim.arena, p.tank.x, p.tank.y));
   }
-  if (ghost && shooter && shooter !== p && shooter.in && shooter.lives <= 0 && !shooter.gone) revive(sim, shooter);
-  return true;
 }
 
 // Ein Geist hat einem Gegner den Rest gegeben: zurück mit einem Leben und
@@ -374,6 +424,41 @@ function stepRockets(sim, damage) {
   sim.rockets = keep;
 }
 
+// Die Zeit ist um: nur noch das letzte Leben, Geister und ihre Bomben
+// verschwinden, gleich fallen die ersten Steine. Wer gerade auf seinen
+// Wiedereinstieg wartet, steigt noch einmal ein.
+function startSudden(sim) {
+  sim.sd = sim.tick;
+  sim.arena = withStones(sim.arena);
+  sim.bombs = [];
+  for (const p of sim.players) if (p.in && p.lives > 1) p.lives = 1;
+}
+
+// Steine, die in diesem Schritt landen. Wer darunter steht, ist ein Leben
+// los, auch mit Schutz. Wer nur mit dem Rand darunter steht, wird
+// weggeschoben. Raketen in dem Feld verpuffen.
+function stepStones(sim) {
+  if (!sim.sd) return;
+  const arena = sim.arena;
+  const total = stoneOrder(arena).cells.length;
+  for (const cell of dropStones(arena, stonesBy(sim.sd, sim.tick, sim.rules.speed, total))) {
+    const cx = cell % arena.W;
+    const cy = (cell - cx) / arena.W;
+    for (const p of sim.players) {
+      if (!alive(p)) continue;
+      if (crushes(cx, cy, p.tank.x, p.tank.y)) {
+        p.shield = 0;
+        destroy(sim, p, -1);
+      } else pushOutOfWalls(arena, p.tank, TANK_R);
+    }
+    sim.rockets = sim.rockets.filter((r) => {
+      if (Math.floor(r.x) !== cx || Math.floor(r.y) !== cy) return true;
+      addEvent(sim, EVENT.POP, r.owner, -1, r.x, r.y);
+      return false;
+    });
+  }
+}
+
 function stepTimers(sim) {
   for (const p of sim.players) {
     if (!p.in || p.lives <= 0) continue;
@@ -394,25 +479,16 @@ function finishRound(sim, winners) {
   sim.phaseEnd = sim.tick + RESULT_TICKS;
 }
 
-// Nach Ablauf der Zeit: meiste Leben, dann meiste Lebensleiste
-export function leaders(players) {
-  const standing = players.filter((p) => p.in && p.lives > 0);
-  if (!standing.length) return [];
-  const lives = Math.max(...standing.map((p) => p.lives));
-  const most = standing.filter((p) => p.lives === lives);
-  const hp = Math.max(...most.map((p) => p.hp));
-  return most.filter((p) => p.hp === hp);
-}
-
 function checkEnd(sim) {
   const field = sim.players.filter((p) => p.in);
   const standing = field.filter((p) => p.lives > 0);
-  if (sim.field >= 2 && standing.length <= 1) {
-    // Haben sich die letzten gleichzeitig erwischt, gewinnen sie gemeinsam.
+  // Allein in der Runde: bis auch der Letzte erwischt ist
+  if (sim.field >= 2 ? standing.length <= 1 : !standing.length) {
+    // Hat es die Letzten im selben Schritt erwischt, gewinnen sie gemeinsam.
     finishRound(sim, standing.length ? standing : field.filter((p) => p.outAt === sim.tick));
     return;
   }
-  if (sim.tick >= sim.phaseEnd) finishRound(sim, leaders(sim.players));
+  if (!sim.sd && sim.tick >= sim.phaseEnd) startSudden(sim);
 }
 
 // Ein Schritt. `inputs[slot]`: Liste von [Eingabe, laufende Nummer], meist
@@ -434,6 +510,7 @@ export function stepSim(sim, inputs, lineup = []) {
     stepGhosts(sim, inputs, mode);
     stepRockets(sim, true);
     stepBombs(sim, true);
+    stepStones(sim);
     stepTimers(sim);
     checkEnd(sim);
   } else if (sim.phase === PHASE.RESULT) {

@@ -1,6 +1,6 @@
 // Geräusche im Spiel, alle im Browser erzeugt, ohne Dateien. Bewusst sparsam:
-// Schüsse, Treffer, Explosionen, Blitze, Wiedereinstieg, Countdown und ein
-// kurzes Signal am Rundenende. Dazu für den eigenen Panzer ein Summen beim
+// Schüsse, Treffer, Explosionen, Blitze, Wiedereinstieg, Countdown, ein
+// kurzes Signal am Rundenende und im Sudden Death ein dumpfer Schlag je Stein. Dazu für den eigenen Panzer ein Summen beim
 // Aufladen der Bombe, ein Knistern beim Blitzen und ein leises Klicken, wenn
 // wieder nachgeladen ist.
 //
@@ -19,7 +19,7 @@ export function createSfx({ muted = false } = {}) {
   const ctx = audioContext();
   let off = muted;
   const silent = {
-    effect() {}, frame() {}, count() {}, result() {}, tick() {},
+    effect() {}, frame() {}, count() {}, result() {}, tick() {}, sudden() {},
     toggle() { off = !off; return off; }, muted: () => off,
   };
   if (!ctx) return silent;
@@ -159,6 +159,10 @@ export function createSfx({ muted = false } = {}) {
     chime(k, pan) {
       tone({ type: 'triangle', f: 520, to: 1040, dur: 0.3, vol: 0.08 * k, attack: 0.03, pan });
     },
+    thud(k, pan) {
+      tone({ f: 95, to: 42, dur: 0.16, vol: 0.22 * k, pan });
+      hiss({ dur: 0.12, vol: 0.1 * k, f: 500, to: 120, pan });
+    },
     click() {
       tone({ type: 'square', f: 1300, dur: 0.025, vol: 0.035 });
       tone({ type: 'square', f: 1700, dur: 0.025, vol: 0.03, delay: 0.05 });
@@ -203,6 +207,9 @@ export function createSfx({ muted = false } = {}) {
         break;
       case FX.THROW:
         sounds.whoosh();
+        break;
+      case FX.STONE:
+        if (once('stone', 0.07)) sounds.thud(near * near, pan);
         break;
       case EVENT.POP:
         if (once('pop', 0.12)) sounds.puff(near, pan);
@@ -316,12 +323,21 @@ export function createSfx({ muted = false } = {}) {
     if (ready()) sounds.tick(high);
   }
 
+  // Sudden Death beginnt: zwei tiefe Töne und ein Grollen
+  function sudden() {
+    if (!ready()) return;
+    tone({ type: 'sawtooth', f: 196, dur: 0.32, vol: 0.05 });
+    tone({ type: 'sawtooth', f: 147, dur: 0.6, vol: 0.06, delay: 0.3 });
+    hiss({ dur: 1.1, vol: 0.12, f: 260, to: 70, attack: 0.2, delay: 0.25 });
+  }
+
   return {
     effect,
     frame,
     count,
     result,
     tick,
+    sudden,
     toggle() {
       off = !off;
       master.gain.setTargetAtTime(off ? 0 : VOLUME, ctx.currentTime, 0.05);

@@ -6,8 +6,9 @@ import { solidAt } from './arenas.js';
 import { traceRocket, gunRay, blastPoint } from './physics.js';
 import { EVENT, PHASE } from './sim.js';
 import { FX } from './client.js';
-import { COLORS, VEHICLES, TANK_R, BARREL, LIVES, GHOST } from './config.js';
+import { COLORS, VEHICLES, TANK_R, BARREL, LIVES, GHOST, SUDDEN, TICK_RATE } from './config.js';
 import { makeRng } from './rng.js';
+import { stoneOrder, landTick } from './stones.js';
 
 const TAU = Math.PI * 2;
 const FLOOR = '#d8c7a0';
@@ -17,6 +18,11 @@ const WALL_TOP_HI = '#8c9cb2';
 const WALL_SIDE = '#3d4859';
 const WALL_EDGE = '#2a3240';
 const FRONT = 0.24; // Höhe der Wandvorderseite in Feldern
+// Steine im Sudden Death: warmes Grau, damit sie sich vom Stahl der Wände abheben
+const ROCK_TOP = '#9a8f82';
+const ROCK_HI = '#b3a899';
+const ROCK_SIDE = '#5e554c';
+const ROCK_DARK = 'rgba(55,45,38,0.55)';
 
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -532,6 +538,114 @@ export function createRenderer(canvas) {
     f.strokeRect(0.03, 0.03, arena.W - 0.06, arena.H - 0.06);
   }
 
+  // Ein Stein auf Feld x, y, in Feldern. `openBelow`: darunter ist frei, dann
+  // sieht man seine Vorderseite. Jeder Stein ist etwas anders geformt.
+  function drawRock(g, x, y, openBelow, seed) {
+    const r = makeRng(seed * 7919 + 17);
+    const topH = openBelow ? 1 - FRONT : 1;
+    g.fillStyle = ROCK_SIDE;
+    g.fillRect(x, y, 1, 1);
+    g.fillStyle = ROCK_TOP;
+    g.fillRect(x, y, 1, topH);
+    // heller Buckel mit unregelmäßigen Ecken
+    const j = () => 0.04 + r() * 0.1;
+    g.fillStyle = ROCK_HI;
+    g.beginPath();
+    g.moveTo(x + j() + 0.06, y + j());
+    g.lineTo(x + 1 - j() - 0.06, y + j());
+    g.lineTo(x + 1 - j(), y + topH * 0.45);
+    g.lineTo(x + 1 - j() - 0.1, y + topH - j());
+    g.lineTo(x + j() + 0.1, y + topH - j());
+    g.lineTo(x + j(), y + topH * 0.5);
+    g.closePath();
+    g.fill();
+    // Risse
+    g.strokeStyle = ROCK_DARK;
+    g.lineWidth = 0.035;
+    g.lineCap = 'round';
+    g.beginPath();
+    const cx = x + 0.25 + r() * 0.5;
+    const cy = y + topH * (0.25 + r() * 0.4);
+    g.moveTo(cx, cy);
+    g.lineTo(cx + (r() - 0.5) * 0.35, cy + 0.12 + r() * 0.15);
+    g.moveTo(cx, cy);
+    g.lineTo(cx + 0.12 + r() * 0.15, cy - 0.05 - r() * 0.1);
+    g.stroke();
+    if (openBelow) {
+      g.fillStyle = 'rgba(0,0,0,0.25)';
+      g.fillRect(x, y + topH, 1, 0.04);
+    }
+  }
+
+  // Gelandete Steine, einmal vorgezeichnet, neu, sobald einer dazukommt
+  let stoneLayer = null;
+  let stoneKey = '';
+  function buildStones(view) {
+    const arena = view.arena;
+    const count = arena.stones || 0;
+    const key = `${floorKey}|${view.round}|${count}`;
+    if (key === stoneKey) return;
+    stoneKey = key;
+    if (!count) {
+      stoneLayer = null;
+      return;
+    }
+    const px = S * dpr;
+    if (!stoneLayer) stoneLayer = document.createElement('canvas');
+    stoneLayer.width = Math.ceil(arena.W * px);
+    stoneLayer.height = Math.ceil(arena.H * px);
+    const f = stoneLayer.getContext('2d');
+    f.scale(px, px);
+    const cells = stoneOrder(arena).cells;
+    const solid = (x, y) => solidAt(arena, x, y);
+    f.fillStyle = 'rgba(40,30,15,0.28)';
+    for (let i = 0; i < count; i += 1) {
+      const x = cells[i] % arena.W;
+      const y = (cells[i] - x) / arena.W;
+      if (!solid(x + 1, y + 1) || !solid(x, y + 1) || !solid(x + 1, y)) f.fillRect(x + 0.14, y + 0.2, 1, 1);
+    }
+    for (let i = 0; i < count; i += 1) {
+      const x = cells[i] % arena.W;
+      const y = (cells[i] - x) / arena.W;
+      drawRock(f, x, y, !solid(x, y + 1), cells[i]);
+    }
+  }
+
+  // Die nächsten Steine: erst ein Schatten, der dunkler und größer wird, im
+  // letzten Moment der Stein selbst, wie er herunterfällt
+  function drawFalling(view, shadows) {
+    if (!view.sd || !Number.isFinite(view.stoneTick)) return;
+    const arena = view.arena;
+    const cells = stoneOrder(arena).cells;
+    const lead = SUDDEN.lead * TICK_RATE;
+    const fall = SUDDEN.fall * TICK_RATE;
+    const now = view.stoneTick;
+    for (let i = arena.stones || 0; i < cells.length; i += 1) {
+      const left = landTick(view.sd, i, view.speed) - now;
+      if (left > lead) break;
+      if (left < 0) continue;
+      const x = cells[i] % arena.W;
+      const y = (cells[i] - x) / arena.W;
+      if (shadows) {
+        const k = 1 - left / lead;
+        const size = (0.35 + 0.6 * k) * S;
+        ctx.fillStyle = `rgba(35,24,12,${0.1 + 0.32 * k})`;
+        roundRect(ctx, sx(x + 0.5) - size / 2, sy(y + 0.5) - size / 2, size, size, size * 0.2);
+        ctx.fill();
+      } else if (left < fall) {
+        const g = 1 - left / fall;
+        const lift = (1 - g) * (1 - g) * 2.4;
+        const scale = 1.18 - 0.18 * g;
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, g * 2.5);
+        ctx.translate(sx(x + 0.5), sy(y + 0.5 - lift));
+        ctx.scale(S * scale, S * scale);
+        drawRock(ctx, -0.5, -0.5, true, cells[i]);
+        ctx.restore();
+      }
+    }
+  }
+
   const sx = (x) => ox + x * S;
   const sy = (y) => oy + y * S;
 
@@ -568,6 +682,14 @@ export function createRenderer(canvas) {
         const th = p.a + (rand() - 0.5) * 0.9;
         const v = 1 + rand() * 1.5;
         return { kind: 'smoke', x: mx, y: my, vx: Math.cos(th) * v, vy: Math.sin(th) * v, r: 0.07 + rand() * 0.06, grow: 0.5, life: 0.4, max: 0.4, color: '200,195,185' };
+      });
+      return;
+    }
+    if (e.kind === FX.STONE) {
+      burst(e.x, e.y, 6, () => {
+        const th = rand() * TAU;
+        const v = 0.8 + rand() * 1.2;
+        return { kind: 'smoke', x: e.x + Math.cos(th) * 0.45, y: e.y + Math.sin(th) * 0.45 + 0.2, vx: Math.cos(th) * v, vy: Math.sin(th) * v, r: 0.1 + rand() * 0.08, grow: 0.6, life: 0.5, max: 0.5, color: '176,156,124' };
       });
       return;
     }
@@ -1501,6 +1623,9 @@ export function createRenderer(canvas) {
           spawn({ kind: 'smoke', x: p.x + (Math.random() - 0.5) * 0.3, y: p.y + (Math.random() - 0.5) * 0.3, vx: 0.15, vy: -0.5, r: 0.1, grow: 0.5, life: 1.2, max: 1.2, color: '60,58,56' });
         }
       }
+      // Steine des Sudden Death über Wracks, Spuren und Brandflecken
+      buildStones(view);
+      if (stoneLayer) ctx.drawImage(stoneLayer, ox, oy, arena.W * S, arena.H * S);
       // Panzer
       for (const p of view.players) {
         if (!p.in || p.dead > 0 || p.lives <= 0) continue;
@@ -1564,6 +1689,9 @@ export function createRenderer(canvas) {
       }
     }
 
+    // Schatten der nächsten Steine, auch über den Panzern
+    if (shown) drawFalling(view, true);
+
     // Raketen
     const ids = new Set();
     for (const r of view.rockets) {
@@ -1581,6 +1709,7 @@ export function createRenderer(canvas) {
         drawGhost(p, t);
       }
       drawRebirths(view, t, dt);
+      drawFalling(view, false);
     }
 
     if (shown) {
@@ -1641,6 +1770,7 @@ export function createRenderer(canvas) {
   }
 
   function reset() {
+    stoneKey = '';
     particles.length = 0;
     scorches.length = 0;
     treads.length = 0;

@@ -28,7 +28,19 @@ Das Gerät des Gastgebers führt den Spielstand. Seine Seite muss offen bleiben,
 - Gespielt wird auf fünf Arenen. Zu Beginn jedes Spiels wird ihre Reihenfolge gemischt, jede Runde kommt die nächste, nach der fünften geht es von vorn los.
 - Wer alle Leben verloren hat, ist nicht einfach raus: Kurz darauf fährt er als Geist auf dem Rand der Arena herum (WASD) und wirft kleine Bomben quer zur Wand nach innen. Leertaste halten wirft weiter, bis 12 Felder. Die Bombe fliegt über Wände hinweg, landet, blinkt kurz und explodiert dann (14 Schaden in der Mitte, 6 am Rand, Radius 1,1). Danach dauert es 4,5 s bis zum nächsten Wurf. Gibt ein Geist damit einem Gegner den Rest, kehrt er mit einem Leben und 30 % Lebensleiste an einem freien Startplatz zurück, kurz geschützt.
 - Die Runde endet, wenn nur noch einer Leben hat. Erwischen sich die letzten beiden gleichzeitig, gewinnen beide.
-- Läuft die Zeit ab, gewinnt, wer die meisten Leben hat, bei Gleichstand, wer mehr Lebensleiste hat. Ist es dann immer noch gleich, gewinnen mehrere.
+- Läuft die Zeit ab, beginnt der **Sudden Death**, siehe unten. Eine Wertung nach Leben oder Lebensleiste gibt es nicht mehr.
+
+### Sudden Death
+
+- Wer noch fährt, hat ab jetzt nur noch sein letztes Leben, egal wie viele er vorher hatte. Wiedereinstiege gibt es nicht mehr. Nur wer gerade auf seinen Wiedereinstieg wartet, steigt noch einmal ein, ebenfalls mit dem letzten Leben.
+- Die Geister verschwinden samt ihren Bomben. Wer raus ist, schaut nur noch zu.
+- Eine Sekunde nach Beginn fallen Steine, alle 0,11 s einer (bei mittlerem Tempo), in einer Spirale von außen nach innen: Ring für Ring, jeder im Uhrzeigersinn ab der linken oberen Ecke. Sie fallen auch auf die Wände. Nach gut 26 Sekunden ist alles zu.
+- Eine Sekunde, bevor ein Stein landet, zeigt ein Schatten am Boden, wo. Der Schatten wird dunkler und größer, im letzten Moment sieht man den Stein fallen.
+- Landet ein Stein auf einem Panzer, ist sein Leben weg, auch mit Schutz. Ragt der Panzer nur mit dem Rand unter den Stein, wird er stattdessen weggeschoben. Raketen in dem Feld verpuffen. Liegende Steine sind Wände: Raketen prallen ab, Schüsse und Blitze kommen nicht durch, die Bombe des Böllers schon.
+- Wer noch einmal einsteigt, landet möglichst nah an seinem Startplatz auf einem Feld, das noch mindestens 3 Sekunden frei bleibt. Gibt es keins mehr, ist er raus.
+- Wer zuletzt noch fährt, holt den Punkt. Nur wenn es die Letzten im selben Moment erwischt, etwa unter demselben Stein, gewinnen sie gemeinsam.
+- Bots fahren rechtzeitig weg, wenn ihr Feld bald dran ist, und meiden Felder, auf die gleich ein Stein fällt.
+- Die Steine rechnet jedes Gerät selbst aus: Wann welcher fällt, steht fest, sobald der Sudden Death beginnt. Werte in `SUDDEN` in `js/config.js`, die Spirale in `js/stones.js`.
 - Jeder Rundensieger bekommt einen Punkt. Nach einer kurzen Ehrenrunde, in der man nur noch fahren kann, beginnt die nächste Runde. Wer die eingestellten Punkte erreicht, gewinnt das Spiel.
 - Wer während eines Spiels dazukommt, schaut zu und steigt mit der nächsten Runde ein. Fährt auf seinem Platz gerade ein Bot, übernimmt er dessen Panzer sofort.
 
@@ -70,7 +82,7 @@ Eine statische Seite ohne Server und ohne Build-Schritt, aufgebaut wie Hatz.
 
 - `js/config.js`: alle Stellschrauben, Fahrzeuge, Farben und Einstellungen
 - `js/arenas.js`: die Arenen als Raster aus Wänden, Boden und Startplätzen
-- `js/physics.js`, `js/sim.js`, `js/bots.js`: Bewegung, Regeln und Bots, ohne Browser-Abhängigkeiten
+- `js/physics.js`, `js/sim.js`, `js/stones.js`, `js/bots.js`: Bewegung, Regeln, Steine im Sudden Death und Bots, ohne Browser-Abhängigkeiten
 - `js/host.js`, `js/client.js`: Gastgeber und die Sicht eines Geräts auf das Spiel
 - `js/net.js`: Verbindung zwischen den Geräten und Verschlüsselung
 - `js/render.js`, `js/input.js`, `js/app.js`: Darstellung, Steuerung, Oberfläche
@@ -93,10 +105,11 @@ Wie bei Hatz: Die Geräte finden sich über vier öffentliche, kostenlose MQTT-V
 - **Trefferrichtung:** Wird der eigene Panzer getroffen, leuchtet kurz ein roter Bogen aus der Richtung des Treffers.
 - **Rauch:** Unter 30 % Lebensleiste qualmt der eigene Panzer.
 - **Rundenende:** Konfetti in der Farbe der Sieger, ihr Panzer glüht, solange das Ergebnis steht. In den letzten 10 Sekunden einer Runde tickt es leise.
+- **Sudden Death:** groß in der Mitte angekündigt, mit zwei tiefen Tönen und einem Grollen. Oben steht statt der Zeit „Sudden Death“. Jeder Stein landet mit einer kleinen Staubwolke und einem dumpfen Schlag.
 
 ## Geräusche
 
-Alle Geräusche entstehen im Browser, ohne Dateien, und sind bewusst sparsam: Schüsse, Treffer, Treffer auf den Schutz, Explosionen, Blitze, verpuffende Raketen, Wiedereinstieg, der Countdown und ein kurzes Signal am Rundenende. Für den eigenen Panzer kommen ein Summen beim Aufladen der Bombe, ein Knistern beim Blitzen und ein leises Klicken dazu, wenn wieder nachgeladen ist. Was weiter weg passiert, ist leiser und kommt etwas mehr von links oder rechts. Unten rechts im Spiel lassen sie sich abschalten, der Browser merkt sich das.
+Alle Geräusche entstehen im Browser, ohne Dateien, und sind bewusst sparsam: Schüsse, Treffer, Treffer auf den Schutz, Explosionen, Blitze, verpuffende Raketen, Wiedereinstieg, der Countdown, ein kurzes Signal am Rundenende und im Sudden Death ein Signal zum Beginn und ein dumpfer Schlag je Stein. Für den eigenen Panzer kommen ein Summen beim Aufladen der Bombe, ein Knistern beim Blitzen und ein leises Klicken dazu, wenn wieder nachgeladen ist. Was weiter weg passiert, ist leiser und kommt etwas mehr von links oder rechts. Unten rechts im Spiel lassen sie sich abschalten, der Browser merkt sich das.
 
 ## Musik
 

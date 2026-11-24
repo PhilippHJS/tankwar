@@ -211,3 +211,30 @@ test('als Geist fährt man ohne Verzögerung, und das Gezeigte stimmt mit dem Ga
   const shown = a.view(w.now()).players[a.slot];
   assert.ok(Math.hypot(shown.gx - truth.x, shown.gy - truth.y) < 0.01, `zeigt ${shown.gx.toFixed(2)},${shown.gy.toFixed(2)} statt ${truth.x.toFixed(2)},${truth.y.toFixed(2)}`);
 });
+
+test('im Sudden Death sehen alle dieselben Steine, gezeigt wird sofort, was der Gastgeber hat', () => {
+  const w = createWorld({ latency: 60, jitter: 30, loss: 0.08, levels: [0, 2, 0] });
+  const players = ['a', 'b'].map((id) => w.join(id));
+  players.forEach((c, i) => {
+    c.pilot = (t) => drive(i)(t) & ~32; // fahren, nicht schießen
+  });
+  w.run(1500);
+  w.host.start();
+  w.run(4500);
+  w.host.sim.phaseEnd = w.host.sim.tick + 1;
+  let worst = 0;
+  w.run(8000, () => {
+    const truth = w.host.sim.arena.stones || 0;
+    for (const c of players) worst = Math.max(worst, Math.abs((c.view(w.now()).arena.stones || 0) - truth));
+  });
+  const sim = w.host.sim;
+  assert.ok(sim.sd > 0 && sim.arena.stones > 20, `Steine: ${sim.arena.stones}`);
+  // höchstens ein, zwei Steine Unterschied, je nachdem, wann genau man hinschaut
+  assert.ok(worst <= 2, `Unterschied: ${worst}`);
+  for (const c of players) {
+    const shown = c.view(w.now()).arena;
+    const n = Math.min(shown.stones, sim.arena.stones);
+    const cells = Array.from(sim.arena.solid.keys()).filter((i) => sim.arena.solid[i] !== shown.solid[i]);
+    assert.ok(cells.length <= Math.abs(shown.stones - sim.arena.stones), `Raster weicht ab: ${cells.length} Felder bei ${n} Steinen`);
+  }
+});

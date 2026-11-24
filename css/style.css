@@ -294,6 +294,8 @@ fieldset:disabled .opt input:checked + span { opacity: 1; }
 #round-label { margin: 0; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
 #timer { margin: 2px 0 0; font: 400 26px/1 var(--display); }
 #timer.soon { color: var(--bad); }
+#timer.sudden { color: var(--bad); font-size: 19px; line-height: 26px; animation: throb 1.4s ease-in-out infinite; }
+@keyframes throb { 50% { opacity: 0.7; } }
 #b-quit { position: absolute; top: 14px; right: 16px; }
 
 #feed {
@@ -352,6 +354,7 @@ fieldset:disabled .opt input:checked + span { opacity: 1; }
 #count-round { margin: 0; font: 400 22px/1 var(--display); color: var(--text); text-shadow: 0 3px 0 #000; }
 #count-num { margin: 4px 0; font: 400 150px/1 var(--display); color: var(--accent); text-shadow: 0 6px 0 #6b4c00, 0 14px 40px rgba(0,0,0,0.5); }
 #count-num.go { color: #fff; }
+#count.sudden #count-num { font-size: clamp(44px, 10vw, 104px); color: var(--bad); text-shadow: 0 5px 0 #5a1414, 0 14px 40px rgba(0,0,0,0.5); }
 #count-text { margin: 0; font-size: 18px; font-weight: 700; text-shadow: 0 2px 6px rgba(0,0,0,0.9); }
 
 #result {
@@ -392,6 +395,7 @@ fieldset:disabled .opt input:checked + span { opacity: 1; }
   .pcard .tag { display: none; }
   #clock { min-width: 100px; padding: 4px 12px 6px; }
   #timer { font-size: 22px; }
+  #timer.sudden { font-size: 15px; line-height: 22px; }
 }
 
 /* ---------- Musik ---------- */

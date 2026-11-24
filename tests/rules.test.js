@@ -129,25 +129,6 @@ test('wer die eingestellten Punkte erreicht, gewinnt das Spiel', () => {
   assert.equal(sim.players[0].points, 2);
 });
 
-test('nach Ablauf der Zeit: erst Leben, dann Lebensleiste, sonst mehrere Sieger', () => {
-  const cases = [
-    { lives: [2, 3, 3], hp: [100, 20, 50], winners: [2] },
-    { lives: [3, 1, 2], hp: [10, 100, 100], winners: [0] },
-    { lives: [2, 2, 1], hp: [68, 68, 100], winners: [0, 1] },
-  ];
-  for (const c of cases) {
-    const { sim, lineup } = setup([0, 1, 1], [0, 1, 2]);
-    c.lives.forEach((lives, slot) => {
-      sim.players[slot].lives = lives;
-      sim.players[slot].hp = c.hp[slot];
-    });
-    sim.phaseEnd = sim.tick + 1;
-    stepSim(sim, idle(), lineup);
-    assert.equal(sim.phase, PHASE.RESULT);
-    assert.deepEqual(sim.winners, c.winners);
-  }
-});
-
 test('erwischen sich die letzten beiden gleichzeitig, gewinnen beide', () => {
   const { sim, lineup } = setup();
   for (const p of sim.players) if (p.in) { p.lives = 1; p.hp = 1; p.shield = 0; }

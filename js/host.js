@@ -127,6 +127,8 @@ export function createHost({ levels, autoRestart = false, onChange = () => {} } 
       rn: sim.round,
       o: sim.levels,
       ar: sim.arena.index,
+      sd: sim.sd, // Sudden Death seit diesem Schritt, 0: noch nicht
+      sn: sim.arena.stones || 0, // so viele Steine liegen schon
       // Je Panzer, Reihenfolge siehe P in client.js
       p: sim.players.map((p) => {
         const t = p.tank;

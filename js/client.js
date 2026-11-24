@@ -13,6 +13,7 @@
 // flüssig fahren.
 
 import { arenaOf } from './arenas.js';
+import { withStones, dropStones, stonesBy, stoneOrder } from './stones.js';
 import {
   newTank, copyTank, stepTank, launchRocket, stepRocket, copyRocket, gunRay, rayHitsCircle, blastPoint, IDLE, inputFire, withoutFire, wrap, angleDiff,
   newGhost, copyGhost, stepGhost, rimPoint, rimLength, ghostTarget,
@@ -33,8 +34,8 @@ export const P = {
 const B = { ID: 0, OWNER: 1, SX: 2, SY: 3, TX: 4, TY: 5, K0: 6, LAND: 7, BOOM: 8 };
 // Felder einer Rakete
 const R = { ID: 0, OWNER: 1, SEQ: 2, X: 3, Y: 4, VX: 5, VY: 6, LIFE: 7, B: 8 };
-// Zusätzliche Effekte neben den Ereignissen des Gastgebers
-export const FX = { FIRE: 100, THROW: 101 };
+// Zusätzliche Effekte neben den Ereignissen des Gastgebers; ein Stein landet
+export const FX = { FIRE: 100, THROW: 101, STONE: 102 };
 
 export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
   const client = {
@@ -44,7 +45,8 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
     status: 'joining', // joining | in | full | old | lost | closed
     slot: -1,
     lobby: null,
-    arena: arenaOf(0),
+    arena: arenaOf(0), // im Sudden Death eine eigene Kopie, in die Steine fallen
+    base: arenaOf(0),
     latest: null,
     rtt: null,
     effects: [], // Ereignisse fürs Zeichnen, werden dort abgeholt
@@ -184,7 +186,8 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
     if (!Array.isArray(snap.p) || snap.p.length !== MAX_PLAYERS) return;
     if (client.latest && (snap.rn < client.latest.rn || snap.k < client.latest.k - 2 * TICK_RATE)) return;
     const arena = arenaOf(snap.ar);
-    if (arena !== client.arena || (client.latest && snap.rn !== client.latest.rn)) {
+    if (arena !== client.base || (client.latest && snap.rn !== client.latest.rn)) {
+      client.base = arena;
       client.arena = arena;
       snaps.length = 0;
       ghosts = [];
@@ -318,6 +321,32 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
     }
   }
 
+  // Sudden Death: Steine fallen lassen, bis zum Schritt, in dem der Gastgeber
+  // gerade ist. Wann welcher fällt, steht fest. Nach Rundenende liegen so
+  // viele, wie der Gastgeber sagt.
+  // Der Schritt, in dem der Gastgeber jetzt gerade ist, wie bei den Raketen
+  const presentTick = (now) => hostTickAt(now) + Math.min((client.rtt || 0) / 2, 120) / STEP_MS;
+  function updateStones(now) {
+    const latest = client.latest;
+    if (!latest || !latest.sd) return;
+    if (client.arena === client.base) client.arena = withStones(client.base);
+    const playing = latest.ph === PHASE.PLAY && samples.length;
+    // Runde vorbei, aber hier schon ein Stein mehr gefallen: zurück auf den Stand des Gastgebers
+    if (!playing && (latest.sn || 0) < client.arena.stones) {
+      client.arena = withStones(client.base);
+      dropStones(client.arena, latest.sn || 0);
+    }
+    const arena = client.arena;
+    const total = stoneOrder(arena).cells.length;
+    const want = playing ? stonesBy(latest.sd, Math.floor(presentTick(now)), speedNow(), total) : latest.sn || 0;
+    if (want <= arena.stones) return;
+    const quiet = want - arena.stones > 8; // mitten im Sudden Death dazugekommen
+    for (const cell of dropStones(arena, want)) {
+      const cx = cell % arena.W;
+      if (!quiet) client.effects.push({ kind: FX.STONE, x: cx + 0.5, y: (cell - cx) / arena.W + 0.5 });
+    }
+  }
+
   // Einmal pro Bild: Zeit vorrücken, Eingabe anwenden und verschicken.
   client.frame = (now, inputCode = IDLE) => {
     if (lastFrame === null) lastFrame = now;
@@ -338,6 +367,7 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
       link.send({ t: 'ping', ts: now }, false);
     }
 
+    updateStones(now);
     const arr = myArr();
     const mode = client.latest ? modeOf(client.latest.ph) : -1;
     const playing = client.status === 'in' && haveMe && arr && arr[P.IN] === 1 && mode >= 0;
@@ -467,7 +497,7 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
   }
 
   const view = {
-    ready: false, phase: PHASE.LOBBY, round: 0, tick: 0, ticksLeft: 0, arena: client.arena, levels: null,
+    ready: false, phase: PHASE.LOBBY, round: 0, tick: 0, ticksLeft: 0, arena: client.arena, levels: null, sd: 0, speed: 1,
     slot: -1, winners: [], champions: [], rockets: [], bombs: [],
     players: Array.from({ length: MAX_PLAYERS }, (_, slot) => ({
       slot, in: false, x: 0, y: 0, h: 0, a: 0, v: 0, hp: 0, maxHp: 100, lives: 0, dead: 0, shield: 0,
@@ -487,6 +517,9 @@ export function createClient({ id, name, watch = false, link, vehicle = 0 }) {
     view.round = latest.rn;
     view.arena = client.arena;
     view.levels = latest.o;
+    view.sd = latest.sd || 0;
+    view.speed = speedNow();
+    view.stoneTick = latest.ph === PHASE.PLAY ? presentTick(now) : -Infinity; // fürs Zeichnen der fallenden Steine
     view.tick = hostTick;
     view.ticksLeft = Math.max(0, latest.pe - hostTick);
     view.winners = latest.w || [];

@@ -9,6 +9,8 @@
 //   Pistole schießt bei freier Sicht und in Reichweite
 //   Bombe   lädt auf, bis der Zielkreis beim Gegner ist, und hält Abstand
 //   Blitze  fährt ran und blitzt, solange Mana da ist
+// Im Sudden Death fährt er rechtzeitig weg, bevor auf sein Feld ein Stein
+// fällt, und meidet Felder, auf die bald einer fällt.
 // Ein bisschen Ungenauigkeit ist Absicht.
 
 import { solidAt } from './arenas.js';
@@ -17,7 +19,12 @@ import {
   packInput, moveIndex, aimIndex, launchRocket, stepRocket, copyRocket, angleDiff, castRay, inZapReach, blastPoint, rimPoint, rimLength, IDLE,
 } from './physics.js';
 import { alive, vehicleOf, ghostActive, ghostParams, PHASE, EVENT } from './sim.js';
-import { TANK_R, ROCKET_R, DT } from './config.js';
+import { TANK_R, ROCKET_R, DT, TICK_RATE, SUDDEN } from './config.js';
+import { cellLands, cellDistance } from './stones.js';
+
+const DODGE_STONE = 2.5 * TICK_RATE; // so früh macht er sich davon
+const AVOID_STONE = 4 * TICK_RATE; // in solche Felder fährt er nicht mehr
+const SAFE_STONE = 5 * TICK_RATE; // dorthin flieht er
 
 const NEIGHBORS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
 
@@ -141,9 +148,70 @@ export function createBot(slot, seed) {
     return soonest;
   }
 
+  // Fällt auf dieses Feld bald ein Stein?
+  const soon = (sim, cx, cy, within) => sim.sd > 0 && cellLands(sim.arena, sim.sd, sim.rules.speed, cx, cy) <= sim.tick + within;
+  const blocked = (sim, cx, cy) => solidAt(sim.arena, cx, cy) || soon(sim, cx, cy, AVOID_STONE);
+
   function freeAhead(sim, x, y, dx, dy) {
     const len = Math.hypot(dx, dy) || 1;
-    return !solidAt(sim.arena, Math.floor(x + (dx / len) * 0.9), Math.floor(y + (dy / len) * 0.9));
+    return !blocked(sim, Math.floor(x + (dx / len) * 0.9), Math.floor(y + (dy / len) * 0.9));
+  }
+
+  // Sudden Death: Steht er dort, wo gleich ein Stein fällt, oder nah daran?
+  function underStone(sim, tank) {
+    if (!sim.sd) return false;
+    const tx = Math.floor(tank.x);
+    const ty = Math.floor(tank.y);
+    for (let oy = -1; oy <= 1; oy += 1) {
+      for (let ox = -1; ox <= 1; ox += 1) {
+        if (cellDistance(tx + ox, ty + oy, tank.x, tank.y) >= SUDDEN.crush + 0.15) continue;
+        if (soon(sim, tx + ox, ty + oy, DODGE_STONE)) return true;
+      }
+    }
+    return false;
+  }
+
+  // Weg zum nächsten Feld, das noch eine Weile frei bleibt: Richtung zum
+  // ersten Feld auf dem Weg dorthin. Unterwegs nur durch Felder, die noch
+  // frei sind, wenn er dort ankommt, und nicht durch andere Panzer. Gibt es
+  // so keinen Weg, dann irgendeinen.
+  function escapeStone(sim, tank, speed, careful = true) {
+    const arena = sim.arena;
+    const W = arena.W;
+    const taken = sim.players.filter((p) => alive(p) && p.tank !== tank).map((p) => p.tank);
+    const occupied = (x, y) => taken.some((o) => Math.hypot(o.x - x - 0.5, o.y - y - 0.5) < TANK_R * 2);
+    const perCell = (TICK_RATE / speed) * 1.3;
+    const depth = new Int16Array(W * arena.H);
+    const start = Math.floor(tank.y) * W + Math.floor(tank.x);
+    // Nur ein Nachbarfeld ist dran: in die Mitte des eigenen Feldes
+    if (!soon(sim, Math.floor(tank.x), Math.floor(tank.y), SAFE_STONE)) return [Math.floor(tank.x) + 0.5 - tank.x, Math.floor(tank.y) + 0.5 - tank.y];
+    const prev = new Int32Array(W * arena.H).fill(-2);
+    prev[start] = -1;
+    depth[start] = 0;
+    const queue = [start];
+    for (let head = 0; head < queue.length; head += 1) {
+      const cell = queue[head];
+      const x = cell % W;
+      const y = (cell - x) / W;
+      if (cell !== start && !soon(sim, x, y, SAFE_STONE)) {
+        let step = cell;
+        while (prev[step] !== start && prev[step] >= 0) step = prev[step];
+        const sx = step % W;
+        return [sx + 0.5 - tank.x, (step - sx) / W + 0.5 - tank.y];
+      }
+      for (let k = 0; k < 4; k += 1) {
+        const nx = x + NEIGHBORS[k][0];
+        const ny = y + NEIGHBORS[k][1];
+        if (solidAt(arena, nx, ny) || occupied(nx, ny)) continue;
+        if (careful && soon(sim, nx, ny, (depth[cell] + 1) * perCell + 20)) continue;
+        const next = ny * W + nx;
+        if (prev[next] !== -2) continue;
+        prev[next] = cell;
+        depth[next] = depth[cell] + 1;
+        queue.push(next);
+      }
+    }
+    return careful ? escapeStone(sim, tank, speed, false) : null;
   }
 
   // Nächstes Feld über die Abstände zum Gegner: näher heran oder weiter weg
@@ -157,8 +225,8 @@ export function createBot(slot, seed) {
     for (const [ox, oy] of NEIGHBORS) {
       const nx = tx + ox;
       const ny = ty + oy;
-      if (solidAt(arena, nx, ny)) continue;
-      if (ox && oy && (solidAt(arena, tx + ox, ty) || solidAt(arena, tx, ty + oy))) continue;
+      if (blocked(sim, nx, ny)) continue;
+      if (ox && oy && (blocked(sim, tx + ox, ty) || blocked(sim, tx, ty + oy))) continue;
       const d = field[ny * arena.W + nx];
       if (d < 0) continue;
       if (closer ? d < bestD : d > bestD) {
@@ -309,7 +377,8 @@ export function createBot(slot, seed) {
     // ---------- Fahren ----------
     let dx = 0;
     let dy = 0;
-    const danger = playing && (t % 6 === slot || sim.players.some((p) => p.tank.ch > 0)) ? threat(sim, me) : null;
+    const run = playing && underStone(sim, tank) ? escapeStone(sim, tank, vehicleOf(sim, me).speed) : null;
+    const danger = !run && playing && (t % 6 === slot || sim.players.some((p) => p.tank.ch > 0)) ? threat(sim, me) : null;
     if (danger && (!dodge || t >= dodge.until)) {
       const vl = Math.hypot(danger.vx, danger.vy) || 1;
       let px = -danger.vy / vl;
@@ -325,7 +394,11 @@ export function createBot(slot, seed) {
       }
       dodge = { dx: px, dy: py, until: t + 22 };
     }
-    if (dodge && t < dodge.until) {
+    if (run) {
+      [dx, dy] = run;
+      dodge = null;
+      stray = null;
+    } else if (dodge && t < dodge.until) {
       dx = dodge.dx;
       dy = dodge.dy;
     } else if (stray && t < stray.until) {
@@ -334,7 +407,7 @@ export function createBot(slot, seed) {
     } else {
       const fx = Math.floor(foe.tank.x);
       const fy = Math.floor(foe.tank.y);
-      const key = `${arena.index}:${fx}:${fy}`;
+      const key = `${arena.index}:${arena.stones || 0}:${fx}:${fy}`;
       if (key !== fieldKey || t - fieldAt > 45) {
         field = distanceField(arena, fx, fy);
         fieldKey = key;

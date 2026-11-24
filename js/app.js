@@ -518,13 +518,14 @@ function hudEvent(e, view) {
   if (e.kind !== EVENT.DESTROY) return;
   const by = view.players[e.by];
   const of = view.players[e.of];
-  if (!by || !of) return;
+  if (!of || (!by && e.by >= 0)) return;
   if (e.of === view.slot) lastKiller = e.by;
   const who = (p) => colored(p.slot, p.name, p.slot === view.slot);
   const out = e.item <= 0;
   const verb = e.by === view.slot ? 'erwischst' : 'erwischt';
-  let text = `${who(by)} ${verb} ${e.of === view.slot ? 'dich' : who(of)}`;
-  if (e.by === e.of) text = e.of === view.slot ? 'Du sprengst dich selbst' : `${who(of)} sprengt sich selbst`;
+  let text = by ? `${who(by)} ${verb} ${e.of === view.slot ? 'dich' : who(of)}` : '';
+  if (!by) text = e.of === view.slot ? 'Ein Stein erwischt dich' : `Ein Stein erwischt ${who(of)}`;
+  else if (e.by === e.of) text = e.of === view.slot ? 'Du sprengst dich selbst' : `${who(of)} sprengt sich selbst`;
   if (out) text += e.of === view.slot ? '. Du bist raus' : `. ${who(of)} ist raus`;
   addFeed(text);
 }
@@ -535,6 +536,7 @@ const pips = (n, target, fresh = false) => Array.from({ length: target }, (_, i)
 
 let playSince = 0;
 let goUntil = 0;
+let suddenUntil = 0;
 let lastPhase = -1;
 function updateHud(view, t) {
   const client = session.client;
@@ -556,15 +558,23 @@ function updateHud(view, t) {
   });
 
   const counting = view.phase === PHASE.COUNTDOWN;
+  const sudden = view.sd > 0 && (view.phase === PHASE.PLAY || view.phase === PHASE.RESULT);
   const secs = counting ? rulesFor(view.levels).seconds : view.phase === PHASE.PLAY ? secsOf(view.ticksLeft) : 0;
   // Letzte zehn Sekunden: leises Ticken, die letzten drei etwas höher
   put('tick', view.phase === PHASE.PLAY && secs <= 10 && secs > 0 ? secs : 0, (v) => {
     if (v) sfx.tick(v <= 3);
   });
-  put('timer', `${clockText(secs)}|${view.phase === PHASE.PLAY && secs <= 10}`, (v) => {
-    const [text, soon] = v.split('|');
+  put('timer', `${sudden ? 'Sudden Death' : clockText(secs)}|${view.phase === PHASE.PLAY && secs <= 10}|${sudden}`, (v) => {
+    const [text, soon, sd] = v.split('|');
     $('#timer').textContent = text;
     $('#timer').classList.toggle('soon', soon === 'true');
+    $('#timer').classList.toggle('sudden', sd === 'true');
+  });
+  // Sudden Death beginnt: kurz groß in der Mitte, dazu ein Signal
+  put('sudden', sudden && view.phase === PHASE.PLAY ? view.round : 0, (v) => {
+    if (!v) return;
+    suddenUntil = t + 2600;
+    sfx.sudden();
   });
   put('round', `Runde ${view.round} · ${view.arena.name}`, (v) => {
     $('#round-label').textContent = v;
@@ -600,12 +610,13 @@ function updateHud(view, t) {
   if (view.phase === PHASE.PLAY || view.phase === PHASE.COUNTDOWN) {
     if (!me || !me.in) down = 'Du schaust zu und steigst in der nächsten Runde ein.';
     else if (me.ghost) down = 'Du bist ein Geist. Fahr am Rand entlang, halte die Leertaste und lass los, um eine Bombe zu werfen.<small>Gibst du damit einem Gegner den Rest, kehrst du mit einem Leben zurück.</small>';
-    else if (me.lives <= 0) down = 'Alle Leben verloren.';
+    else if (me.lives <= 0) down = view.sd ? 'Raus. Im Sudden Death schaust du nur noch zu.' : 'Alle Leben verloren.';
     else if (me.dead > 0 && now() < rebornUntil) down = 'Du kehrst zurück!';
     else if (me.dead > 0) {
       const killer = view.players[lastKiller];
       const by = killer && lastKiller !== view.slot ? ` von ${colored(killer.slot, killer.name, false)}` : '';
-      down = `Abgeschossen${by}. Zurück in<span class="secs">${secsOf(me.dead)}</span>`;
+      const last = view.sd ? '<small>Sudden Death: Du steigst noch einmal ein, mit deinem letzten Leben.</small>' : '';
+      down = `Abgeschossen${by}. Zurück in<span class="secs">${secsOf(me.dead)}</span>${last}`;
     }
   }
   put('down', down, (v) => {
@@ -617,8 +628,20 @@ function updateHud(view, t) {
   if (lastPhase === PHASE.COUNTDOWN && view.phase === PHASE.PLAY) goUntil = t + 700;
   lastPhase = view.phase;
   const going = view.phase === PHASE.PLAY && t < goUntil;
-  put('count', counting || going, (v) => {
+  const warn = sudden && view.phase === PHASE.PLAY && t < suddenUntil && !going;
+  put('count', counting || going || warn, (v) => {
     $('#count').hidden = !v;
+  });
+  put('count-sudden', warn, (v) => {
+    $('#count').classList.toggle('sudden', v);
+    if (!v) return;
+    shown['count-num'] = undefined;
+    shown['count-round'] = undefined;
+    shown['count-text'] = undefined;
+    $('#count-round').textContent = 'Die Zeit ist um';
+    $('#count-num').textContent = 'Sudden Death';
+    $('#count-num').classList.remove('go');
+    $('#count-text').textContent = 'Nur noch ein Leben. Von außen fallen Steine.';
   });
   if (counting || going) {
     const left = Math.ceil(view.ticksLeft / TICK_RATE);

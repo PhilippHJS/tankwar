@@ -3,7 +3,7 @@
 
 export const TICK_RATE = 60;
 export const DT = 1 / TICK_RATE;
-export const PROTOCOL = 6;
+export const PROTOCOL = 7;
 
 // Plätze im Raum. Alles ist auf eine beliebige Zahl ausgelegt, für mehr
 // Spieler braucht es nur mehr Farben (siehe COLORS) und Arenen mit genug
@@ -210,3 +210,15 @@ export function ghostFor(speed = 1) {
   pacedGhost.set(speed, out);
   return out;
 }
+
+// Sudden Death: Ist die Zeit um, hat jeder nur noch sein letztes Leben, es
+// gibt keinen Wiedereinstieg und keine Geister mehr. Von außen nach innen
+// fallen Steine in einer Spirale, auch auf Wände, bis nur noch einer übrig ist.
+// Wer gerade auf seinen Wiedereinstieg wartet, steigt noch einmal ein.
+export const SUDDEN = {
+  lead: 1, // so lange vorher zeigt ein Schatten, wo ein Stein landet
+  every: 0.11, // Sekunden je Stein bei mittlerem Tempo: alles zu in gut 26 Sekunden
+  fall: 0.3, // so lange sieht man einen Stein fallen (nur fürs Zeichnen)
+  crush: 0.2, // erwischt, wenn die Mitte des Panzers näher am Feld ist; sonst wird er weggeschoben
+  safe: 3, // Wiedereinstieg nur auf ein Feld, das mindestens so lange frei bleibt
+};
